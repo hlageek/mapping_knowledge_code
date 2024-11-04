@@ -1,0 +1,72 @@
+---
+title: "Mapping knowledge"
+format: html
+---
+
+# Restore environment
+
+The package environment for the project is document with the `renv` package. 
+After opening the project, `renv` will attempt to restore the environment to a consistent state automatically. 
+However, if this process fails to trigger, you can manage this process manually with the following code block:
+
+```{r}
+#| label: environment
+#| echo: false
+
+# Check if the 'renv' package is installed; if not, install it
+if (!require(renv)) install.packages("renv")
+# Restore the project library from the lockfile
+renv::restore()
+```
+
+You can check if the dependencies are satisfied with `renv::status()`. 
+If you encounter package installation issues, you can try to set the package version to the version that you can install successfully with `renv::install(package_name)`. 
+Then, to update the version in lockfile, run `renv::record(package_name@0.0.0)` (replace `package_name` with name of the package and `0.0.0` with successfully installed version number). 
+Finally,  execute `renv::restore()` again with the updated lockfile. 
+However, bear in mind that, if the environment is altered in this manner, there is a risk that the code may produce errors due to unexpected version conflicts.
+After successfully restoring the environment and before proceeding with the next step, make sure to restart you R session.
+
+> Note that the `quarto-cli` version used in this project is `1.5.56`.
+
+# Obtain data
+
+Run the following code to populate the `data/input_data` folder. 
+Alternatively, you can download the data manually.
+If you proceed with manual download, make sure that you preserve the inner structure of the `data` folder.
+
+```{r}
+#| label: data
+#| echo: false
+
+# Define the path for the input data
+path_input_data <- file.path("data", "input_data") 
+path_supp_data <- file.path("data", "supplementary_data")
+# Create the directory if it doesn't exist locally
+if (!dir.exists(path_input_data)) dir.create(path_input_data, recursive = TRUE)
+if (!dir.exists(path_supp_data)) dir.create(path_supp_data, recursive = TRUE)
+
+# Register the OSF repository
+osf_repository <- osfr::osf_retrieve_node("https://osf.io/r2pv6/?view_only=9516c9e999014ad3ae630c250c62aea4") 
+# Download data from the repository
+input_data_download <- osf_repository |> 
+  osfr::osf_ls_files("data/input_data", n_max = Inf)  |> 
+  osfr::osf_download(path_input_data, conflicts = "skip")
+supp_data_download <- osf_repository |> 
+  osfr::osf_ls_files("data/supplementary_data", n_max = Inf)  |> 
+  osfr::osf_download(path_supp_data, conflicts = "skip")
+```
+
+# Reproduce analyses
+
+Once the environment is restored and data are in place, you can reproduce the analysis and outputs documented in a `targets` pipeline.
+
+```{r}
+#| label: analysis
+#| echo: false
+
+# Generate the targets pipeline by rendering 'targets.qmd'
+quarto::quarto_render(here::here("targets.qmd"))
+# Execute the targets pipeline
+targets::tar_make()
+```
+

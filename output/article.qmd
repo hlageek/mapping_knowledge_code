@@ -1,0 +1,1155 @@
+---
+title: "Mapping Knowledge"
+subtitle: "Topic Analysis of Science Locates Researchers in Disciplinary Landscape"
+format:
+  docx: default
+  pdf:
+    documentclass: scrartcl
+    papersize: 'a4'
+    keep-tex: true
+    include-in-header:
+      text: |
+        \addtokomafont{disposition}{\rmfamily}
+        \newcommand{\beginsupplement}{%
+        \setcounter{section}{1}%
+        \renewcommand{\thesection}{S\arabic{section}}%
+        \setcounter{subsection}{0}%
+        \renewcommand{\thesubsection}{S\arabic{section}.\arabic{subsection}}%
+        \setcounter{table}{0}%
+        \renewcommand{\thetable}{S\arabic{table}}%
+        \setcounter{figure}{0}%
+        \renewcommand{\thefigure}{S\arabic{figure}}%
+        }
+    # template-partials:
+    #   - before-body.tex 
+number-sections: true
+csl: https://www.zotero.org/styles/chicago-author-date
+bibliography: 
+  - "https://owncloud.cesnet.cz/remote.php/dav/public-files/2LbStb1uwfw8STo/My_Library.bib"
+abstract: |
+  The study presents a new approach for constructing an epistemological coordinate system that locates individual researchers within the disciplinary landscape of science. Drawing on a comprehensive national dataset of scientific outputs, we build a topic model based on a semantic network of publications and terms derived from textual content comprising titles, abstracts, and keywords. Compositional data transformation applied to the topic model enables a geometric analysis of topics across disciplines.
+  The design yields four important results for addressing the gap between knowledge and knowledge-producers. 1) Hierarchical clustering confirms an alignment between traditional disciplinary classification and our empirical, bottom-up topic model. 2) Principal component analysis reveals three axes — Culture-Nature, Life-Non-life, and Materials-Methods — that primarily structure this scientific knowledge space. 3) The projection of individual researchers via their topic portfolios allows to locate them relationally on these three continuous measures of epistemological distinctions. 4) The robustness of our approach is validated by examining the links between researchers' topic orientation and supplementary variables such as publication practices, gender, institutional affiliations, and funding sources. Our method could inform science policy and evaluation practices, as well as be extended to uncover associations between products and producers in other cultural fields.
+keywords: topic modeling; geometric data analysis; science mapping; field theory; scientometrics
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, echo=FALSE)
+targets::tar_load(stats, store = here::here("_targets"))
+stats_descriptions <- tidytable::tidytable(
+names(stats),
+as.numeric(stats),
+purrr::map_chr(stats, attr, which = "description")
+) 
+library(cluster)
+library(clValid)
+library(ggplot2)
+library(tidytable)
+source(here::here("R", "utils.R"))
+source(here::here("R", "supp_funs.R"))
+```
+
+
+
+# Introduction
+
+Maps of science depict the structure of scientific knowledge produced by scientists through the medium of scholarly literature. 
+Comprehending social and epistemological relations encoded by science maps inspires key policy questions, such as how resources are distributed across different research areas; why some interdisciplinary opportunities are overlooked while others lead to unconventional collaborations; or how specialties rise or fall over time. 
+In solving these issues, scientometric and sociological traditions of science mapping have formed on either side of a cartographic dilemma: should the focus be on mapping knowledge or knowledge producers?
+The dilemma finds its justification in the notion that "knowledge in the form of a science can gain autonomy in relation to the groups who know and who produce this knowledge" [@Elias1972, p. 131]. 
+The relative autonomy of knowledge leads to a divergence in science mapping in terms of units and methods of analysis. 
+This divergence is particularly evident in the ambivalent role the concept of scientific disciplines plays within the competing approaches.
+
+Science mapping based on publication databases has developed as a bottom-up replacement for top-down disciplinary taxonomies traditionally used to classify scientific outputs.
+The prevailing bibliometric methods rely on reference lists of publications to construct networks from the citation or co-authorship linkages between papers, journals, or authors [@Small1985f; see @Chen2017 for review].
+Alternatively, relationships between documents are detected through shared language terms [@Leydesdorff1989b].
+Citation and linguistic relationships detected in scientific literature have been shown as more similar to each other than they both are to expert taxonomies [@Dias2018] and their integration is possible with hybrid approaches [@Boyack2014].
+The task of scientometric science mapping is to overcome the limitations of a priori compartmentalization of knowledge into disciplines and visualize the empirical complexity and expansive dynamics of scientific landscape through clustering and community detection in bibliometric or semantic networks. 
+
+In contrast, in the sociological perspective on the classification of knowledge, disciplines are not considered only as taxa of information, but as durable social fields that organize knowledge production through training and placement of individuals across departments, journals, professional associations, prizes, etc. [@Bourdieu1988; @Bourdieu2004; @Benz2022; @Warczok2021; @Heilbron2004]. 
+Sociology employs survey and prosopographical methods to examine the social dimensions of science and the stratification of knowledge producers based on their access to pertinent resources.
+However, sociology has lagged behind scientometrics in the systematic investigation of the intellectual content generated by scientists.
+Sociological maps of science consequently emphasize social dimensions of knowledge production at the expense of epistemological relations. 
+
+Aligning knowledge with its producers requires an integrative framework
+articulated in Pierre Bourdieu's field theory as homology between the space of positions and the space of position-takings [@Bourdieu1983; @Bourdieu1993].
+While the space of positions is structured by the distribution of field-specific resources, or capitals, among participants in the field, the space of position-takings takes shape from the relative positioning of field-specific stakes and discursive claims.
+Conceptualizing the research problems, methods, and results reported in publications as position-takings in the body of scientific knowledge [@Bourdieu2004; @Kropp2013] may allow us to capture distinctive epistemological orientations at the individual researcher level.
+However, despite Bourdieu's emphasis on the theoretical need for a conjunct analysis of the two spaces constitutive of social fields, his empirical work, such as the seminal study on the French academia [@Bourdieu1988], did not offer a method for mapping position-takings equivalent to the geometric data analysis applied to the study of positions.
+
+Advances in computational text analysis present new opportunities for reconciling the two traditions of science mapping – scientometrics and relational sociology – through a novel combination of topic modeling [@Blei2012a], CoDa - compositional data analysis [@Aitchison1986], and GDA - geometric data analysis [@LeRoux2004].
+The purpose of this article is to demonstrate how the aforementioned toolbox permits a joint analysis of the latent semantic relationships and the principles of disciplinary classification in a corpus of scholarly literature. 
+The resulting geometric perspective on the space of scientific position-takings yields an epistemological coordinate system where researchers can be located based on the content of their publications.
+Analogically to cartography, we embark on an exploratory voyage to discover thematic lands in the sea of scientific language, chart them with disciplines as compass points, and ultimately register the populations of researchers in the newfound territories.
+
+The proposed mapping procedure is illustrated through a case study of the field of science in the Czech Republic.
+The country tracks the outputs of all national research entities through its comprehensive _R&D Information System_.
+From this resource, we compile a dataset of `r stats$n_pubs` publications published primarily in the two decades between 2000 to 2021 by `r stats$n_authors` authors.
+The data feeds into a large topic model of Czech science.
+Cluster analysis [@Romesburg2004] indicates that the model effectively captures similarities among disciplines. 
+Furthermore, we find that distinctions in scientific topics are made on the spectra of culture versus nature, life versus non-life, and between research objects and research methods.
+The placement of individual authors in the structured knowledge space follows discernible patterns according to publication formats, gender, level of collaboration, types of institutions, as well as funding mechanisms.
+The method ultimately reveals particular insights about the Czech research system, such as a gender bias between life and non-life topics or an epistemological blind spot between medical and socio-cultural disciplines.  
+
+The paper's agenda commences by emphasizing the compatibility of topic modeling techniques with sociological research. 
+A section on data and methods provides a detailed account of constructing the topic model and applying compositional data transformation as a precursor to geometrical analysis. 
+The next step consists of projecting individual topic portfolios onto the knowledge space.
+Results include a report on the clustering of disciplines, visualizations of the knowledge space and individual topic portfolios, and a qualitative interpretation of the obtained epistemological coordinates.
+As a follow-up, we validate the findings through examining associations between topic orientations and non-textual variables.
+The discussion highlights the role of language and disciplinary classification within the analytical protocol.
+We conclude by considering the extension of the proposed approach to other fields of cultural production.
+
+# Topic modeling and sociology
+
+At heart, topic modeling serves as a dimensionality reduction technique for textual data.
+A corpus in the form of a document-term matrix, where each row corresponds to a document and each column stands for a term (a word or an n-gram) is an extremely high-dimensional dataset, where the number of dimensions coincides with or exceeds (when n-grams are used) the size of the vocabulary.
+The premise of topic modeling is that the terms can be grouped into semantically coherent sets, thereby greatly reducing the number of dimensions required to describe a collection of documents. 
+Despite its origins in information retrieval [@Churchill2022], topic modeling has been employed to address a range of research problems involving large textual datasets in the social sciences and humanities.
+
+In quantitative sociology, topic models have primarily been applied either as a substitute for conventional content analysis or as a method to operationalize abstract concepts that can subsequently be related to non-textual variables.
+Examples of the former approach include studies of media content [@Roose2018] or open-ended questions in surveys [@Roberts2014].
+The latter approach is typical in the sociology of science, where topic models are used to identify links between the epistemological and social dimensions of science. 
+This includes examining the impact of affinity between particular topics and social identities on inequalities in science [@Kozlowski2022; @Nielsen2019], the role of specialization in academic careers [@Heiberger2021], and the diversification of topic coverage in relation to changes in the academic workforce [@Risi2022].
+
+Maps of science derived from topic models are less common in the literature.
+Two notable examples stand out. 
+In their seminal article on correlated topic models (CTM), Blei and Lafferty [-@Blei2007] generated a network of scientific topics to showcase the CTM's ability to estimate between-topics relationships.
+By imposing an adjustable level of sparsity on these relationships, the authors could visualize a decade's worth of articles from the _Science_ journal in the form of a topic network.
+One of the outstanding features that can be grasped from this work is the isolation of social science topics from the rest of the journal's content.
+
+Similarly to the approach advocated here, Suominen and Toivanen [-@Suominen2016] focused on the interplay between human-assigned disciplinary and machine-generated labels of publications.
+The topic labels were obtained from an LDA model, albeit only in the form of the highest scoring topic for a given publication.
+Such reduction entailed a considerable loss of signal, but it simplified creation of a co-occurrence matrix between disciplinary and topic labels.
+Hence the authors could visualize the bipartite relationships between disciplines and topics and make apparent the relative distances between disciplines as well as the intermediary role of topics.
+
+An application of the geometric perspective on topic models has been pioneered by Kropp and Larsen [-@Kropp2022], who effectuated a transition "from corpus to space" by conducting multiple correspondence analysis with a dichotomized version of a topic model derived from the abstracts of grant projects in the social sciences. 
+With this procedure, the authors traced a gradual shift of projects from blue-sky research towards topics associated with market and government demands  in the successive calls of the European Union's Framework Programs.
+An extension of this approach was used by Rossier et al. [-@Rossier2023] to identify topics that attract prestige and resources in the discipline of economics.
+
+The above examples raise the question of what makes topic modeling appealing to sociological inquiry.
+According to DiMaggio et al. [-@DiMaggio2013, p. 586], "topic modeling renders operational central ideas in the sociology of culture".
+The estimation of models through co-occurrence of words in documents aligns with the principle of the relationality of meaning.
+Furthermore, topic models that express topics as probability distributions over the entire vocabulary account for polysemy by assigning different probabilities to the same term across various contexts.
+Additionally, representing documents as distributions over topics reflects the interpretative principle of heteroglossia, which asserts that discourse encompasses multiple voices.
+Finally, topic models are consistent with the logic of interpretative frames by guiding interpretation through varying weights assigned to different topics. 
+
+Besides facilitating the operationalization of particular sociolinguistic concepts, topic models possess other sociologically interesting properties.
+A fundamental feature of topic models is the representation of documents as discrete probability distributions over topics, which gives the document-topic mixtures an implicitly compositional character [@Aitchison2011].
+As parts of a composition, topics should be understood relationally, in terms of their respective proportions within a research portfolio [@Wallace2015; @Klavans2017].
+Each research portfolio then becomes a wager on success, hedged across a range of possible topics.
+Over the course of their careers, individual authors leave behind a comprehensive record of the accumulated stakes they have made in the field with their works.
+This portfolio perspective deeply resonates with the proposal for "probabilistic sociology" by Strand and Lizardo [-@Strand2021].
+
+The ability to allocate topics to documents upholds topic modeling, notwithstanding its limitations, such as the bags-of-words assumption, as a methodological alternative to the new text embedding techniques [@Kozlowski2019; @Stoltz2021].
+Embedding algorithms, including large language models, vectorize words or documents while accounting for syntax and context of tokens, leading to a more precise determination of similarities or dissimilarities of the embedded variables. 
+The assessment of distances between linguistic items is a primary task outlined by Mohr [-@Mohr1998] for the analysis of meaning structures. 
+However, as weights obtained from the training of neural networks, the embedding vector values are unintelligible quantities on their own.
+Conversely, the interpretability -- in principle -- of topics ensures that document-topic matrices can additionally support two-mode analytical strategies, which Mohr [-@Mohr1998] advocates as a prerequisite for relating cultural and social structures.
+
+Due to their versatile properties, topic models integrate with sociological theory more broadly.
+Within the framework of relational sociology, topic modeling aids in comprehending the organization of language within specific linguistic markets.
+As latent, probable classes or "classes on paper" [@Bourdieu1991], topics can be juxtaposed with the practical classification system employed by agents in a given field.
+Throughout the remainder of this article, we further explore the use of topic modeling to unravel the principles of classification in the scientific field and, ultimately, to map out epistemological distinctions among individual scientists.
+
+# Data and Methods
+
+## Data
+
+The study relies on publicly accessible administrative datasets of research outputs (_Information Register of R&D Results_) and grant projects (_Central Register of R&D Projects_) that comprise the national _R&D Information System_ (https://www.isvavai.cz) of the Czech Republic, which provides legally mandated coverage of the Czech research since 2002.
+_R&D Information System_  therefore encompasses over two decades' worth of records on research outputs, including a number of retroactively incorporated records from the 1990s (see details in @tbl-riv_coverage). 
+
+Although the _R&D Information System_ lacks certain beneficial features of scientific indexing services (e.g., it does not collect citation data and tracks only authors affiliated with Czech research institutions), it possesses two fundamental advantages.
+Firstly, because the records are provided in the public domain and can be either manually exported or queried via a programmable API service, the data can be examined in a reproducible manner.
+Secondly, the _R&D Information System_ includes all disciplines and types of outputs. 
+This implies that monographs and book chapters, which are often overlooked by the dominant indexing services despite holding significance in humanities and social sciences, are accounted for in the data.
+The database therefore offers a comprehensive depiction of research outputs within a single country, which makes it suitable for the application of text-based science mapping techniques.
+
+Using the API, we obtained yearly records for `r stats$n_pubs` publications of the four fundamental types: books, book chapters, journal articles, and conference proceedings.
+Each publication record contained a designation of its discipline in the schema of Fields of Research and Development (FORD).
+Additionally, we collected information on `r stats$n_grants` grants from all public providers.
+The records contain information on `r stats$n_authors` authors affiliated to Czech institutions and disambiguated through the _R&D Information System_'s system of identifiers.
+Within this population, `r stats$n_pis` of authors have served as principal investigators on at least one grant project.
+The data also includes affiliations for author–publication pairs.
+Genderize.io service enabled us to enrich this dataset with a variable representing authors' likely perceived binary gender based on their first names (and nationality, where such information was available).
+See @tbl-gender_eval for the evaluation of the enrichment.
+
+A representation of the content of publications was obtained by extracting and concatenating the titles, abstracts, and keywords from `r stats$n_top_pubs` records.
+The textual corpus constitutes a subset of the primary dataset.
+It only covers publications that met criteria designed to ensure sufficient text quality for further processing.
+Titles were required to exceed 10 characters in length, while abstracts had to surpass 100 characters.
+Additionally, the subset excludes texts that automated language detection did not recognize as English.
+The corpus underwent lemmatization [@Straka2017] and preprocessing, which included lowercasing, removal of non-alphabetic characters and stopwords, and replacement of frequent collocations with bi- and tri-grams [@Benoit2018].
+
+A limitation of this specific dataset is that it receives inputs from research organizations and funding providers, leading to occasional inconsistencies.
+Problems may occur especially when multiple records are associated with a single publication as is the case for project-supported research and cross-institutional collaborations. 
+The _R&D Information System_ collates such records provided by various organizations only at the identifier level without resolving conflicting entries (e.g., assignment of a single publication to two or more distinct disciplines).
+Furthermore, as with any other bibliometric resource, erroneous entries (e.g., an abstract in the Czech language entered in the field for English abstracts or incorrect identifiers for individuals) or missing data are not uncommon, particularly for older records.
+To address these issues, we made concerted efforts to consolidate and clean the dataset by selecting the most frequent labels in case of conflicts, prioritizing author information from their home institutions, implementing automatic language detection, and setting minimum thresholds for textual entries. 
+
+## TopSBM topic model 
+
+We opted for the TopSBM algorithm [@Gerlach2018] to generate a topic model of scientific publications in our dataset. 
+Although our protocol is agnostic to the selection of specific topic modeling algorithms, the main motivation was that TopSBM, unlike Latent Dirichlet Allocation (LDA) [@Blei2003], which is most commonly used for topic modeling, does not require a priori hyperparameter for the number of topics to be estimated. 
+Additionally, TopSBM has been show to produce superior topic mixtures compared to LDA, which tends to bias results towards its Dirichlet priors [@Gerlach2018].
+TopSBM operates based on the bag-of-words assumption and treats words and documents as two distinct types of nodes within a bipartite network. 
+Subsequently, the algorithm infers the network's community structure through hierarchical stochastic block modeling and determines the optimal number of topics across various levels of nested hierarchy. 
+Weights for words in topics and for topics in documents are calculated from the observed frequencies of words in the estimated topic blocks and documents, respectively. 
+
+Fitting TopSBM to the textual data produced a topic model described in @tbl-topmodel.
+In order to achieve as detailed a description of documents as possible, we used the most granular solution with `r stats$n_topics` topics.
+Only terms with the total frequency above 10 across the corpus were included in the model.
+
+The document-topic distributions inferred by TopSBM were aggregated at two additional levels: individuals and disciplines.
+The aggregations represent mean probabilities for documents belonging to each individual and FORD discipline, respectively.
+Hence, in addition to topic representation of documents, we also obtained accumulated topic portfolios of individuals ($N=$ `r stats$n_top_individuals`) and disciplines ($N=$ `r stats$n_pcs`). 
+
+```{r}
+#| echo: false
+#| label: tbl-topmodel
+#| tbl-cap: TopSBM topic model statistics
+targets::tar_read(topic_stats_table, store = here::here("_targets")) |>
+gt::tab_footnote(
+  gt::md("_Model consisting of 838428 documents and 116703 terms._")) 
+```
+
+
+## Compositional data analysis {#sec-coda}
+
+In the subsequent step we handled the table of disciplinary topic portfolios as an instance of a compositional data [@Greenacre2021] rather than discrete probability distributions.
+In other words, instead of asking what is the most likely topic for a given discipline, we were interested in disciplines as specific combinations of topics in their relative proportions.
+This methodological twist is technically feasible due to the formal equivalence between discrete probability distributions and compositional data [@Aitchison2011; @Lawley2023].
+When TopSBM serves as the underlying topic modeling algorithm, the shift to a compositional perspective is particularly appropriate because topic weights express relative term-cluster frequencies rather than likelihood estimates from a generative model.
+Put differently, while LDA and LDA-inspired models imply that a document was generated from a topic $K$ with a probability $P$, TopBSM offers a slightly different interpretation indicating that $n$ out of $N$ total terms in the document belong to the topic $K$.
+As the number of terms in a document is fixed, the document processed by TopSBM appears as a composition where the relative counts of topic-terms represent parts of the whole.
+
+Isometric transformations, such as centred log-ratio ($clr$), of closed (constrained by a constant sum) compositional vectors enable the application of linear methods to compositional datasets [@Aitchison1983; @vandenBoogaart2008; @Hron2012].
+We therefore transformed the disciplinary profiles row-wise through $clr$, effectively moving data from the simplex to the real space. 
+Next, we standardized the topics column-wise through $z$-scores. 
+The former transformation eliminated the constant sum constraint, while the latter ensured topic comparability regardless of absolute values.
+The compositional transformations rendered the topic portfolios of disciplines amenable to geometric data analysis and preserved all information on a continuous scale.
+
+## Geometrical data analysis
+
+Hierarchical clustering with Ward's method was used to compare the empirical regrouping of disciplines according to their topic compositions with the nested structure of the FORD classification.
+The input for the algorithm was the distance matrix derived from the disciplinary topic portfolios after their compositional transformations described in @sec-coda.
+The choice of the clustering method reflects its connections with the subsequent principal component analysis, which is the main geometric technique used in the analysis. 
+Both methods process variance in the multivariate Euclidean space and therefore offer complementary perspectives on the same data [@Murtagh2014].
+
+Principal component analysis was applied to the re-centered transpose of the disciplinary portfolios matrix (after $clr-z$ transformation) in order to identify the primary structuring patterns of topics within disciplinary space.
+In the context of topic models, PCA can be perceived as a second-order dimensionality reduction.
+While the topic model captured semantic patterns at the publication level, PCA, when conducted at the aggregated level of scientific disciplines, revealed the principles of variation in topics that are epistemic rather than semantic.
+The scores of topics and loadings of disciplines served as a foundation for interpreting principal components. 
+
+To generate a map depicting epistemological position-takings expressed by individual scientists in their publications, we multiplied the matrix containing individual topic portfolios with the matrix comprising topic scores obtained from PCA.
+Due to the topic portfolios' probabilistic character, this projection corresponded to the barycenter for every individual on each principal component.
+Hence, we could visualize the epistemological positions of individuals in an interpretable geometric space charted by topics and disciplines. 
+
+For a validation of the geometrical solution, we segmented the range of observed coordinates into percentiles, with the 1st and 100th percentiles representing extreme positions on each axis.
+For individuals within each percentile, we calculated statistics pertaining to supplementary variables not used in the construction of the coordinates.
+These variables included indicators of publication practices (share of articles in publications and mean number of co-authors), gender and affiliations (Czech Academy of Sciences, hospitals, and art academies) of researchers, as well as science funding (share of researchers registered as principal investigators and shares of different funding providers).
+We expected to find a degree of consistency between the epistemological position-takings of scientists and the distributions of supplementary variables along the principal components.
+
+## Computational implementation
+
+The outlined procedures and analyses were conducted in R programming language (version >4.1), with the exception of the topic model, for which we used a Python implementation of the TopSBM algorithm (https://github.com/martingerlach/hSBM_Topicmodel).
+Performing topic modeling on the extensive corpus proved to be computationally intensive, necessitating computation on a remote server equipped with 256GB of RAM for successful execution. 
+The remaining code underwent testing on various platforms (Ubuntu, MacOS) with 32GB of RAM.
+For reproducibility purposes, the data and code (inclusive of a snapshot of software packages' versions) have been made publicly available on the Open Science Framework repository.
+
+# Results
+
+## Clustering of disciplines in the space of topics
+
+To examine the extent to which our bottom-up empirical topic model aligns with the FORD disciplinary classification we performed hierarchical clustering of disciplinary topic portfolios.
+The obtained cluster tree (@fig-clustering) recovered most of the information contained in the nested structure of the FORD expert classification.
+A 2-clusters solution confirms the well-established opposition between SSH (social sciences and humanities) and STEM (science, engineering, medicine, and mathematics) disciplines.
+In a solution comprising 3 clusters (evaluated in @sec-supp_cluster), another traditional differentiation between life sciences, including medical disciplines, and non-life sciences emerges.
+
+Further down the line, the clustered topic space reveals additional divisions:
+In SSH, social sciences are distinguished from the humanities, and in STEM, environmental sciences are disconnected from biological and medical sciences. Physics and chemistry cluster separately from the engineering sciences.
+Mathematics, along with electrical engineering and computer science, form a relatively independent cluster of their own.
+
+```{r}
+#| label: fig-clustering
+#| fig-cap: "__Clustering of disciplinary topic portfolios__. Hierarchical clustering with Ward's method applied to the topic dimensions of disciplines. Colors correspond to the broad level of FORD classification. Clusters 1 and 2 represent SSH and STEM disciplines, respectively. Cluster 2 manifests a division between life and non-life sciences."
+#| echo: false
+#| out-width: 15cm
+#| fig.env: figure*
+knitr::include_graphics(
+  path =file.path("figures", 
+  basename(targets::tar_read("disc_clust_viz_png", store = here::here("_targets")))
+  )
+)
+
+```
+
+At the lowest levels of hierarchy, meaningful patterns in the merging of disciplines can be observed: The residual categories -- explicitly designated as "Other" -- appear to share more commonalities among themselves than they do with their parent research areas in the FORD taxonomy.
+The mutual proximity of these residual categories suggests a formation of interdisciplinary regions [@Panofsky2011] in both STEM and SSH.
+In STEM, the interdisciplinary region appears near technological and applied disciplines.
+In SSH, the interdisciplinary cluster includes the explicitly multidisciplinary field of "social and economic geography", "other" social sciences, as well as the "other" humanities and even the "other" engineering and technology.
+The interpretation needs to proceed cautiously, because the residual categories may be susceptible to noise in the data due to smaller number of observations.
+However, with the emergence of specialties such as computational social sciences or digital humanities in SSH, and taking into account the interaction of STEM disciplines with industry applications, it is plausible that such interdisciplinary regions are developing distinct identities poorly captured by traditional expert taxonomies.
+
+Rather than interpreting the observed discrepancies between top-down FORD classification and bottom-up clustering as a failure of either the expert categories or the topic model, we suggest a more productive reading.
+The generally good fit between hierarchical clustering and the tree structure of FORD categories indicates that disciplines indeed classify scientific knowledge but the latent classes of the topic model more effectively represent the complexity and dynamism of science, especially in marginal or interdisciplinary cases.
+
+## Principal components of topics in disciplinary dimensions
+
+Having ascertained the clustering of disciplines in the space of topics, we now transpose the perspective to present the results of the PCA, where topics stand for units of scientific knowledge and the variance in their observed log-ratios is structured by disciplines.
+Like hierarchical clustering, PCA allows for the interpretation of distances between disciplines in the topic space, but additionally offers a reverse perspective on topics in the space of disciplines. 
+Figures \ref{fig-ind_plot_1_2}, \ref{fig-var_plot_1_2} , \ref{fig-ind_plot_2_3}, and \ref{fig-var_plot_2_3} show the combinations of the three main PCA axes.
+Both the cloud of topics and the cloud of disciplines are displayed.
+Cumulatively, the main axes explain `r stats$cumulative_var_3`% of variance in the relative abundances of topics in scientific disciplines. 
+The three axes sufficiently demonstrate the multidimensional character of geometric analysis and we accompany them with a comprehensive explanation of our interpretative process.
+Additional axes retained in the PCA solution are detailed in @sec-supp_pca, where we differentiate the spectrum of synthesis and analysis, applied and fundamental research, as well as descriptive and observational topics contrasted with prescriptive and experimental approaches.
+
+Only the supreme terms for a subset of topics are shown in the visualizations to prevent overplotting.
+Therefore, Tables \ref{tbl-topterms1}, \ref{tbl-topterms2}, and \ref{tbl-topterms3}, additionally list up to `r stats$n_topterms` terms (in TopSBM, a topic can be constituted by a single term or more, also depending on the chosen level of hierarchy - cf. @tbl-topmodel) for `r stats$nrow_topterms_df` topics with the highest and the lowest scores, which characterize the main oppositions on the principal components.
+
+\newpage
+```{r}
+#| label: tbl-topterms1
+#| tbl-cap: Prominent terms in 20 highest-ranked topics on principal component 1
+#| echo: false
+customize_table <- function(x) {
+    x |> 
+    gt::tab_style(
+    style = gt::cell_text(size = 14, v_align = "middle"),
+    locations = gt::cells_body(columns = gt::everything())
+  )  |> 
+    gt::tab_style(
+    style = gt::cell_text(size = 12, v_align = "middle"),
+    locations = gt::cells_footnotes()
+  )  |> 
+  gt::cols_width(c(2,3) ~ px(200))  |> 
+  gt::tab_footnote(gt::md("_Topics are ranked by absolute scores, with terms ranked by their probability within the respective topic. Up to 5 terms are listed for each topic._")) 
+}
+targets::tar_read(axes_coordinates_table, store = here::here("_targets"))[[1]] |> customize_table() 
+
+```
+\newpage
+
+```{r}
+#| label: tbl-topterms2
+#| tbl-cap: Prominent terms in 20 highest-ranked topics on principal component 2
+#| echo: false
+targets::tar_read(axes_coordinates_table, store = here::here("_targets"))[[2]] |> customize_table() 
+```
+\newpage
+
+```{r}
+#| label: tbl-topterms3
+#| tbl-cap: Prominent terms in 20 highest-ranked topics on principal component 3
+#| echo: false
+targets::tar_read(axes_coordinates_table, store = here::here("_targets"))[[3]] |> customize_table() 
+
+```
+
+
+
+
+
+### Culture--Nature axis
+
+The first principal component accounted for `r stats$component_var_1`% variance and, in our interpretation, represents a traditional high-level distinction between nature and culture.
+At one end, there is a concentration of topics capturing words such as _politics,_ _democracy,_ names of countries and cities, references to academic abstracts (_article\_analyse,_ _chapter,_ _author_), methodology (_methodological,_ _functioning_), economics (_pay_), or purely rhetorical segments of the vocabulary (the highest scoring topic comprises words like _try,_ _look,_ _refer_ etc.).
+Disciplines with the highest loadings include political science, law, and philosophy. 
+
+The other end is characterized by topics featuring terminology from physics and chemistry (_deuterium_, _hydrogen_,  _spectroscopy_,  _catalyze_) and biology (_bacterial_,  _substrate_,  _agar_).
+These terms correspond to highly-loading disciplines such as chemical sciences, physical sciences, chemical and material engineering, or biotechnology.
+In a nod to C. P. Snow's essay on the two scientific cultures [@Snow1959], it is noteworthy that variations on the notion of "culture" occur in topics defining both extremes of the first principal component: on one hand, it appears in a bigram _social\_cultural_, on the other hand, as part of _cell\_culture_ bigram.
+
+In line with the results of hierarchical clustering, this analysis unequivocally supports the interpretation that the distinction between sciences and humanities operates as the strongest principle differentiating scientific knowledge.
+At the same time, the @fig-ind_plot_1_2 demonstrates that this distinction cuts through what is essentially a landscape continuously populated by topics.
+
+```{r}
+#| label: fig-ind_plot_1_2
+#| fig-cap: "__Cloud of topics in the knowledge space__. Scores of topics on principal components 1 and 2. _N_ = 3656."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+
+ind_plot1_2_png <- basename(stringr::str_subset(targets::tar_read(pca_disc_ind_viz_png, store = here::here("_targets")), "ind_plot1_2.png"))
+knitr::include_graphics(path =file.path("figures", ind_plot1_2_png ))
+```
+
+```{r}
+#| label: fig-var_plot_1_2
+#| fig-cap: "__Cloud of disciplines in the knowledge space__. Contributions of disciplines on principal components 1 and 2. _N_ = 42."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+
+var_plot1_2_png <- basename(stringr::str_subset(targets::tar_read(pca_disc_ind_viz_png, store = here::here("_targets")), "var_plot1_2.png"))
+knitr::include_graphics(path =file.path("figures", var_plot1_2_png))
+```
+
+### Life--Non-life axis
+
+The second axis, accounting for  `r stats$component_var_2`% of variance, is straightforwardly interpretable as a separation between life and non-life topics.
+Organizational divisions along theses lines are common in educational setting or within research organizations and universities.
+Thus it is not entirely surprising to rediscover it as the second most important principle of epistemological classification in our data.
+The highest positively scoring topics are composed by terms from mathematics and engineering, e.g. _numerical\_method_, _computer\_simulation_, _integral_, _solution_, _power\_system_, _design_, or _microtomography_.
+These topics reflect high loadings of disciplines such as civil or mechanical engineering and physical sciences.
+The contrasting topics draw their vocabulary from medicine and biology: _prevalence_, _tissue_, _testosterone_, _spermatozoa_, _mammal_, _elisa_ (protein detection assay), _veterinary_, _microbiota_ and so on.
+That terminology corresponds to high loadings found in veterinary sciences, basic medicine, and biological sciences. 
+
+Although the second axis does not differentiate the disciplines in humanities and social sciences strongly, a spread of topics reminiscent of the juxtaposition of lifeworld and system [@Habermas1985] emerges in them in homology with the life vs. non-life principle observed in science more broadly.
+Thus social sciences with positive loadings on this axis are more likely to study large societal trends and governance issues with statistical methods -- education, political science, and economics and business -- while negative loadings are associated with people-focused disciplines like sociology and psychology.
+Similarly, when applied to humanities, this distinction may shed light on epistemological controversies between, for example, the great-men theories versus _long durée_ methodologies in historiography, or biographical versus immanent interpretations of artworks in art history.
+
+### Materials--Methods axis
+
+On the third axis with `r stats$component_var_3`% of explained variance (@fig-ind_plot_2_3), the highest positive scores evoke methodological and measurement topics with terms such as: _randomly_, _duration_, _controls_, _diagnosis_, or _statistical\_analysis_.
+Negative values, in contrast, are characterized by topics that refer to cultural (_pottery_, _castle_ _painting_) or geological (_moldanubian_, _garnet_, _ivory_, _danube_) objects, object properties (_neolithic_, _romanesque_, _granulite_, _apfu_ (atoms per formula units), _recycled_), and geographical locations (_prague\_castle_, _slovakian_, _bohemian_). 
+
+```{r}
+#| label: fig-ind_plot_2_3
+#| fig-cap: "__Cloud of topics in the knowledge space__. Scores of topics on principal components 2 and 3. _N_ = 3656."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+
+ind_plot2_3_png <- basename(stringr::str_subset(targets::tar_read(pca_disc_ind_viz_png, store = here::here("_targets")), "ind_plot2_3.png"))
+knitr::include_graphics(path =file.path("figures", "ind_plot2_3.png"))
+```
+```{r}
+#| label: fig-var_plot_2_3
+#| fig-cap: "__Cloud of disciplines in the knowledge space__. Contributions of disciplines on principal components 2 and 3. _N_ = 42."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+
+var_plot2_3_png <- basename(stringr::str_subset(targets::tar_read(pca_disc_ind_viz_png, store = here::here("_targets")), "var_plot2_3.png"))
+knitr::include_graphics(path =file.path("figures", var_plot2_3_png))
+```
+
+The disciplines with high contributions on the methodological extreme (@fig-var_plot_2_3) are clearly the medical and health sciences, followed by computer sciences, psychology and cognitive sciences, as well as mathematics.
+The pole of tangible objects and their qualities is determined by an unexpected grouping of the arts, history and archeology, biotechnological sectors, and media and communication along with earth sciences.
+In light of this organization of the space and for the sake of easier communicability, we denote the third principal component as the axis of Materials and Methods.
+That is, in our interpretation, the third most important differentiation between scientific topics is whether they are substantive - the _what_ topics - or methodological - the _how_ topics.
+
+Nonetheless, the proposed interpretation warrants a caveat.
+In medical topics, which score highly on the methodological dimension, processual terms co-occur with substantive terms, even within the same topic.
+Consequently, pairs of terms such as _patient_--_enrol_ or _morbidity\_mortality_--_control\_study_ can be observed.
+In medicine, the object of study (i.e., a disease or physiological process) is often not directly observable and must be inferred through various examinations and screenings.
+To the extent that a specific disease might only be identifiable through a particular diagnostic test, medical research objects are indeed created through methods.
+Likewise, mathematical and engineering tools applied as methods in other branches of science constitute the very object of research in mathematics and engineering disciplines.
+In contrast, cultural and geological objects are available ready-made to researchers.
+Thus, upon closer scrutiny, the succinct opposition between materials and methods captures a gradient of research topics in sciences - ranging from heteronomously defined objects to epistemological constructs determined with increasing autonomy via scientific methodologies.
+
+The dichotomies summarized in Tables \ref{tbl-topterms1}, \ref{tbl-topterms2}, and \ref{tbl-topterms3} are highly condensed interpretations and should be understood as extreme expressions of a broad and continuous spectrum.
+In this capacity, the oppositions provide a parsimonious system of epistemological distinctions in the space of scientific knowledge and define a coordinate system in which we subsequently locate the topic portfolios of individual researchers.
+
+## From classification of knowledge to epistemological position-takings
+
+Given that each topic possesses deterministic coordinates, it is feasible to project researchers' topic portfolios onto the map of knowledge space by multiplying the matrix of researchers' topic portfolios with the matrix of topics' principal components.
+The outcome reflects the topic orientations of individuals, taking into account the classification of topics in disciplines.
+If two researchers have exclusively authored publications together, they actually share an identical location within the coordinate system.
+
+In the resulting maps (@fig-projection_plot_1_2, @fig-projection_plot_2_3), disciplines and topics define the coordinate system, while the positions of individuals depend on their personal topic portfolios.
+The projection reflects the endogenous process underlying disciplines' intellectual formation – wherein topics characterizing disciplines are defined by publications contributed by authors within a discipline – and guarantees that researchers who share a discipline also appear in close proximity on the resulting map. 
+However, the projection simultaneously captures the full spectrum of individual topic orientations that would be obfuscated by a categorical classification.
+The relative distances between researchers within the same disciplinary area or across disciplines can therefore be measured and visualized. 
+
+### Projection on primary axes
+
+A striking feature of the projection of researchers on principal components 1 and 2 is its circular shape evoking the epistemological circle theoretically proposed by Jean Piaget [@Piaget1973] and other early maps of science [@Fedorov2019].
+The specific arrangement of disciplines bears remarkable resemblance to the circular form of the consensus map of science proposed by Klavans and Boyack [-@Klavans2009].
+The sole notable exception is the placement of engineering, which the consensus map locates between chemistry and geosciences, whereas our map devotes the same area to biotechnology and places engineering between mathematics and physics instead. 
+
+@fig-projection_plot_1_2 also reveals specific patterns of connections and gaps.
+The core of the humanities, although firmly attached to social sciences, appears dislodged from the circular, or rather elliptical pattern of the rest of the disciplinary spectrum.
+Empirically, it also comes into view that the topic area between social and medical sciences is only sparsely populated by researchers.
+Moreover, most researchers in natural sciences seem to be interconnected, forming a smaller circle, from which mathematics and computer sciences are somewhat disparate, within the overall ellipse. 
+
+```{r}
+#| label: fig-projection_plot_1_2
+#| fig-cap: "__Epistemological coordinates of researchers between Culture--Nature and Life--Non-life oppositions__. Each dot corresponds to a projection of an individual researcher onto principal components 1 and 2 in the knowledge space defined by variance of topics across disciplines. _N_ = 58466 of researchers with 5 or more publications. Broad classifications for individuals are denoted by colors, and the mean at the second level of FORD classification is indicated by labels."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+
+plot_PC1_PC2_png <- basename(targets::tar_read("plot_PC1_PC2_png", store = here::here("_targets")))
+knitr::include_graphics(path =file.path("figures", plot_PC1_PC2_png))
+```
+
+
+### Projection on secondary axes
+
+The combination of axes 2 and 3 gives a distinctly different point of view on the distribution of researchers in the epistemological landscape.
+The shape of @fig-projection_plot_2_3, is more triangular than circular.
+Several noteworthy patterns stand out.
+Again, the humanities are relatively distant from other disciplines.
+On the axis of epistemological autonomy in the construction of research objects, the topic portfolios of humanities scholars place them decidedly on the lower part of the plane, which is determined by higher log-ratios of material over methodological topics.
+In life sciences, similar positions are occupied by researchers working in biotechnological sectors.
+In non-life sciences, the prevalence of substantive topics is typical for geosciences and some engineering domains, especially material sciences and civil engineering.
+The opposite extreme of methodological topics is dominated by various branches of medicine in the life-sciences quadrant and math and computer science in the quadrant of non-life sciences.
+Researchers from most disciplines, however, cannot be distinguished along the third axis alone and the Life--Non-life dimension is needed to make them discernible.
+This finding implies that methodological issues are widely shared across disciplines.
+
+
+The social sciences present a fascinating case.
+Although they have a lateral position on the main principal components, they occupy central location on the secondary axes.
+Visually, they form a smaller triangle within the center of a larger one.
+The topic orientations of social scientists, in effect, gravitate in three directions: toward life-science methodologies, non-life-science methodologies, and the research objects of the humanities.
+In a network-type map, such a central location might represent an advantageous brokerage role.
+However, in a geometrical map, this position indicates insufficient distinctiveness with respect to the defining oppositions.
+The rearrangement of relations between disciplines between primary and secondary axes suggests that network visualizations of science tend to overemphasize the dominant type of relations.
+Instead, the geometric analysis provides additional points of view necessary to convey the multiple forces that shape the scientific knowledge space.
+
+```{r}
+#| label: fig-projection_plot_2_3
+#| fig-cap: "__Epistemological coordinates of researchers between Life--Non-life and Materials--Methods oppositions__. Each dot corresponds to a projection of an individual topic portfolio onto principal components 2 and 3 in the knowledge space defined by variance of topics across disciplines. _N_ = 58466 of researchers with 5 or more publications. Broad classifications for individuals are denoted by colors, and the mean at the second level of FORD classification is indicated by labels."
+#| echo: false
+#| out-width: 15cm
+#| fig.env: figure*
+
+
+plot_PC2_PC3_png <- basename(targets::tar_read("plot_PC2_PC3_png", store = here::here("_targets")))
+knitr::include_graphics(path =file.path("figures", plot_PC2_PC3_png)
+)
+```
+
+
+
+Worth comparing are also the shifts between the placement of topics and the placement of individual researchers on the grid.
+Some areas of the graph are sparsely filled by topics but densely populated by researchers, and vice versa.
+The latter effect is particularly visible on the third axis, where a considerable mass of topics concentrate in the graph's bottom half, whereas researchers from most disciplines, except for humanities, appear in the upper half.
+This difference in layouts essentially illustrates the problem of topic choice as a process of building actual, realized topic portfolios from all potential topics and permits a study of its social determinants.
+
+## Topic orientations and social space
+
+Due to the prior use of disciplines as active variables in the construction of the knowledge space, the sheer observation that researchers tend to agglomerate according to a disciplinary logic gives no indication of the validity of the mapping.
+To this purpose, we examine the bivariate relationships between individual position-takings and supplementary variables.
+We choose such variables where the presence or absence of a relationship could be reasonably expected to be socially biased over epistemological tendencies.
+
+```{r}
+#| label: fig-validation_viz
+#| echo: false
+#| out-width: 15cm
+#| fig-cap: "__Distributions of social variables in the knowledge space__. Authors with topic portfolios comprising of 3 or more publications (_N_ = 72657) were binned into percentiles, shown on _x_-axes, based on their principal components' scores. (__A__) Ratio of articles in all publication types, (__B__) ratio of female authors, (__C__) grand mean of the number of co-authors (publications by large consortia with > 100 co-authors excluded from calculation), (__D__) ratio of authors affiliated with the Czech Academy of Sciences, (__E__), ratio of authors affiliated with research hospitals (string \"nemocnice\" [hospital] in the name of the institution), (__F__), ratio of authors affiliated with art schools and academies (string \"umění\" [art] in the name of the institution), (__G__) ratio of Principal Investigators (PIs) among authors, (__H__), ratio of PIs with at least one project funded by the Technology Agency of the Czech Republic supporting applied research, (__I__) ratio of PIs with at least one project funded directly from a government source."
+#| fig.env: figure*
+
+validation_viz_png <- basename(targets::tar_read("validation_viz_png", store = here::here("_targets")))
+knitr::include_graphics(path =file.path("figures", validation_viz_png))
+```
+
+
+
+### Publication types, gender, and team science
+
+The first validation variable concerns publication formats in science: books, book chapters, articles, conference proceedings. 
+Journal articles have become the norm [@Paye2017]; however, disciplines maintain their unique publication traditions and humanities and social sciences continue to place significant value on books.
+Consequently, we expect the proportion of articles to increase along the Culture-Nature division on the first axis.
+As illustrated in @fig-validation_viz A, the share of articles on axis 1 rises progressively from the Culture pole to the Nature pole. 
+Together with discernible patterns in the share of articles on other axes, a perceptible association emerges between knowledge and the format of its dissemination.
+
+A pervasive underrepresentation of women remains a significant challenge in the global scientific community [@Lariviere2013], and this issue is prominently evident in our data.
+Gender bias in topic selection has been posited as one contributing factor to this inequality [@Thelwall2019; @Kozlowski2022].
+The distribution of women within the knowledge space of Czech science (@fig-validation_viz B) supports this thesis, albeit with some qualifications against some of the conventional assumptions.
+Women do not take positions in the knowledge space based on emphasis on materials over methods or by preference of culture over nature.
+Nevertheless, there is a very clear indication that women are overrepresented in topics situated on the Life side of the Life-Non-life axis.
+This finding conveys an essential message regarding which topics should be promoted to enhance gender diversity in any discipline.
+
+To better understand the epistemological gender differences, we demonstrate the relative positioning of average topic portfolios calculated by gender and discipline in @fig-gender_disc_direction. 
+The majority of disciplines are remarkably synchronized in their orientation of gender differences.
+A hypothetical attractor at the intersection of math, engineering, and physics draws in male topic portfolios while repelling female portfolios in the opposite direction. 
+We also observe that in the humanities and human and animal medicine, the gender bias in topic orientations is negligible or practically non-existent. 
+This does not imply that there cannot be a gender-based affinity for specific topics, but rather that any potential epistemological gender bias in these disciplines is not defined with respect to the main oppositions in the knowledge space.
+
+```{r}
+#| label: fig-gender_disc_direction
+#| echo: false
+#| out-width: 15cm
+#| fig-cap: "__Gender differences in disciplinary topic portfolios__. Shapes represent the average topic portfolio for men and women, projected onto Principal Components 1 and 2 for each discipline. Lines illustrate the distances and spatial orientations between the portfolios. Individual authors with profiles that comprise of 5 or more publications are displayed as a background reference (N = 58466). Broad classifications are denoted by colors, and the second level of FORD classification is indicated by labels."
+#| fig.env: figure*
+
+gender_disc_direction_png <- basename(targets::tar_read("gender_disc_direction_png", store = here::here("_targets")))
+knitr::include_graphics(path =file.path("figures", gender_disc_direction_png))
+```
+
+Another characteristic of science expected to vary based on topics is its level of teamwork.
+The growth of teamwork not only represents an increasing historical and social trend [@Wuchty2007] but also serves as a response to complexity through the integration of specializations [@Leahey2016].
+Examining the results in @fig-validation_viz C, a clear relationship between topic orientations and team size emerges.
+Researchers with pronounced cultural and material focus tend to author their publications individually or in small teams.
+Conversely, topics leaning toward life and nature necessitate larger teams.
+At the extreme of non-life sciences, collaborative tendencies sharply decline to low levels.
+Although this non-life pole is sparsely occupied by humanities scholars, the observed decline aligns with the expectation that highly theoretical topics in mathematical and engineering domains still depend on single and small-team authorship.
+
+
+### Affiliations {#sec-affiliations}
+
+Researchers' affiliations serve as a useful non-disciplinary indicator of topic orientations, as some institutions maintain a general scope while others adhere to stipulated missions or pursue goals in specific research areas.
+We therefore anticipate that generalist institutions will exhibit less prominent epistemic profiles compared to their specialized counterparts.
+
+The Czech Academy of Sciences (CAS) is a sizable conglomerate comprising 53 research institutes spanning various disciplines. 
+These institutes are categorized into three research areas: 1) 18 institutes dedicated to non-life sciences, 2) 18 institutes focused on life and chemical sciences, and 3) 17 institutes specializing in humanities and social sciences, of which the social-scientific section comprises a minority of 5 institutes,.
+CAS also has lesser presence in medical and health sciences which predominantly fall under universities' and hospitals' purview.
+The distribution of researchers along the epistemological axes (@fig-validation_viz D) reflects the structural imbalances within CAS's organization: zones pertaining to social sciences on axis 1 are deflated and the medicine-dominated pole of axis 3 manifests a sharp decline.
+Conversely, CAS demonstrates strength in the nature edge of the Culture--Nature axis, which is a finding congruent with organizational bias towards natural sciences.
+
+Hospitals and art schools serve as examples of institutions with delimited research foci.
+The data displayed for hospitals in @fig-validation_viz E and art schools in @fig-validation_viz F support the premise that specialization manifests in the epistemological profiles of affiliated researchers.
+Art schools and hospitals exhibit minimal coverage of large epistemic areas, thus underscoring the prevalence of specialization, in contrast to a degree of comprehensiveness found in the generalist CAS.
+At the same time, the two specialized affiliations give a mirror image of each other. 
+Hospital research peaks in the top percentiles of axis 2 and in the center of axis 1.
+Art research is overrepresented in the bottom percentiles of axis 1 and in the middle of axis 2.
+Finally, art schools and hospitals counter each other when it comes to their focus on materials or methods, respectively, along axis 3.
+The comparison thus shows well-defined epistemological profiles among institutions that have a narrow research scope.
+
+### Funding
+
+Science funding depends on a complex web of funding programs and agencies [@Aagaard2021] and may prioritize certain subjects through explicit thematic calls or implicit topic biases [@Ginther2011].
+Hence, we assume that there is a noticeable connection between funding and topic orientations of principal investigators (PIs).
+Although the results are not as conspicuous as in previous validation exercises (see also @fig-pi_disc_direction), we still observe that PIs are not distributed uniformly across the three epistemological axes.
+In particular, the representation of PIs among researchers progressively diminishes with increasing emphasis on methods over materials.
+Topics characteristic of social sciences also lag behind.
+The mere status of PI does not, however, appear to particularly distinctive in epistemological terms, similarly to a researcher's membership in a generalist institution, as seen in @sec-affiliations for CAS. 
+
+Next we zoom in on PIs with specific types of funding providers.
+PIs supported by the Technology Agency of the Czech Republic, which targets applied research and science-industry collaborations, are expected to show a preference for engineering, which indeed proves to be the case due to the shift towards non-life topics visible in @fig-validation_viz H.
+The observed preference of materials over methods is also an expected feature of applied research. 
+
+Since governmental and scientific structures are not aligned [@Braun1998], we also assume biases in the distribution of government funding across the different sectors of scientific knowledge.
+@fig-validation_viz I shows that becoming a government-funded PI is more likely when working on topics in fields such as medicine (upper percentiles of axis 3) or agriculture (lower percentiles of axis 2), which have direct political representation through entities such as the Ministry of Health and the Ministry of Agriculture that launch their thematic funding programs.
+The lack of funding for strongly cultural topics (lower percentiles of axis 1) may speak to the relative lack of power of the Ministry of Culture in the political field.
+
+# Discussion
+
+Our paper provides a protocol for locating individual researchers' epistemological positions in the coordinate system jointly defined by the algorithmically discovered topics and disciplines in the corpus of scientific publications.
+The approach extends previous work on knowledge mapping by combining network-based topic modeling with the geometric perspective of PCA.
+Our specific implementation of topic modeling overcomes some problems typically accompanying such methods, particularly the need to predetermine the number of topics.
+Turning topics into an intermediary unit of geometric analysis reconnects personal publication histories with the overarching disciplinary matrix.
+We thus obtain a continuous measure of individual epistemological distinctions derived solely from text and document metadata.
+The solution, validated in the environment of social variables, opens new pathways for research on the relationship between knowledge and knowledge producers.
+
+## Disentangling knowledge from language and society
+
+Our main result derives from a projection of individual topic portfolios onto a $clr-z$ transformed and transposed disciplinary matrix.
+Because the choice of the table to be investigated is the fundamental choice in geometric data analysis [@Lebaron2021], one might wonder if following the convoluted path -- from the topic model through aggregation, transformation, and transposition to projection -- was necessary.
+While we could simply argue that these steps involve standard procedures in compositional data analysis, we wish to point out that the protocol was essential for isolating elements of knowledge from societal bias and expression in language.
+
+Conducting geometrical data analysis directly on the topic portfolios of individual researchers yields results sensitive to the linguistic characteristics of topics.
+Given that differentiation of words in language primarily stems from the frequency of use, researchers' emphasis of either frequent or rare terms inevitably emerges as the main source of variance.
+To attenuate the language signal, it is necessary to subject the topics themselves to a non-linguistic analysis through the introduction of additional variables.
+Disciplines, reduced to the labels for textual data, shake off their social properties while retaining their capacity to classify knowledge on epistemological grounds.
+Thus, the double recourse -- first to language and then to disciplines -- is a precondition for mapping the knowledge space where individuals' position-takings can be traced in relative autonomy from social and linguistic effects. 
+
+## Limitations
+
+Topic modeling, which underpins the presented findings, is subject to certain shortcomings stemming from its stochastic initialization and the inherent difficulties in establishing ground truth for evaluation [@Glaser2017; @Held2021; @Ballester2022].
+Such deficiencies affect most clustering methods and, admittedly, constitute a trade-off for data-driven classification in general.
+We compensated for these limitations with qualitative interpretation and indirect validation of the model with supplementary variables.
+Additionally, our topic model could not properly account for homonymy, because TopSBM assigns terms to a single topic rather than estimating topic distributions across the entire vocabulary.
+To alleviate the impact of homonymy on analysis, we converted frequent collocations into unigrams during language pre-processing.
+
+We must also acknowledge the limitations of the global perspective on science.
+From this elevated vantage point, it is difficult to ascertain the extent to which the general epistemological principles remain relevant within the social and institutional contexts of disciplines considered as relatively autonomous markets in the scientific field.
+That is to say, further research needs to investigate the discipline-specific systems of knowledge organization and how they enact the global distinctions.
+Such elaboration requires an understanding of both the intricacies of disciplines and the global principles outlined in our work.
+
+Another potential avenue for expanding our approach involves reconnecting with bibliometric methods. 
+The current procedure assigned equal weight to each paper's contribution to the disciplinary portfolio.
+It would be reasonable instead to weight publications based on their citation counts, as highly cited publications are arguably more influential in shaping a topic profile of its discipline.
+Such adjustment, however, would come at the expense of the inclusiveness of purely textual approaches, as it would require narrowing the scope to publications for which citation data can be obtained.
+Additionally, it is important to note that a publication's influence does not always correspond to its citation counts [@Gerow2018].
+
+The national character of the dataset restricts generalization of the findings.
+The scientific production in the Czech Republic cannot be considered neither representative of the world science nor can it be regarded as its dominant subset.
+However, the dataset's comprehensiveness and public accessibility make it a suitable testbed for cases like ours, where a systematic exclusion of certain scientific areas from data collection should be avoided.
+Additional national studies as well as comparative international research will be needed to confirm the universality of the epistemological coordinate system discovered by our analysis.
+The alignment of our results with the other proposed maps of science [@Klavans2009] inspires optimism for a prospective generalization.
+
+# Conclusion
+
+The study of the compositions of scientific topic portfolios has given us a roadmap to achieve Bourdieu's goal of overcoming "the distinction [...] between the science of scientists and the science of scientific works" [@Bourdieu2004, 58].
+Our approach effectively combines scientometric and sociological considerations by examining both the content of publications and the characteristics of the individuals who produce them. 
+For this purpose, topic modeling proves to be valuable tool for operationalizing knowledge and traversing the levels of publications, individuals, and disciplines.
+The application of geometric methods to topic models, facilitated by techniques crafted for compositional data, marks a substantial methodological advancement.
+By adopting a relational approach to topics and creating a spatial representation of their latent space, the analysis mitigates concerns about the minutiae of topic modeling and supports a robust interpretation.
+
+Recent literature has addressed the fundamental problem of topic choice in science [@Zuckerman1978] by focusing on the effects and characteristics of specific topics in careers and disciplines [cf. @Heiberger2021; @Risi2022; @Kozlowski2022].
+These investigations have the merit of highlighting the importance of particular research interests in the allocation of scientific rewards and their unequal appeal to various demographic groups.
+Our contribution additionally acknowledges that scientists navigate the space of position-takings guided by existing practical classifications and with regard to mutual relations and hierarchies among topics.
+These considerations led us to reformulate the problem of topic choice as a matter of topic orientations, or distinctive epistemological tastes, expressed in individual research portfolios that are built from topics arranged in the "disciplinary matrix" [@Kuhn1970].
+We have shown that scholars' epistemological tastes are tractable through this relational approach and can be systematically associated with variables that determine the positions in social space.
+
+The empirical reconstruction of an epistemological coordinate system for locating knowledge producers in the landscape of scientific knowledge offers a fresh perspective on science mapping.
+The map of the Czech scientific field yields observations relevant to national science policy and evaluation.
+For instance, the map renders immediately apparent the lack of expertise in addressing health and medical problems in relation to cultural and societal issues.
+Monitoring the actual proximity of individuals on the map  – where, for example, a collaboration between a sociologist and a computer scientist spans a shorter epistemic distance than one between a sociologist and a chemist –  prompts us to question how institutions work with disciplinary boundaries. 
+Institutions such as funding agencies or evaluation committees may rethink how their organizational routines (e.g., internal segmentation into disciplinary panels) and norms (e.g., value placed on interdisciplinarity) deviate from the empirical reality of the field.
+Our results also suggest that a targeted support for topics oriented toward various forms of life could increase gender diversity in institutions and disciplines.
+The scope of our contribution, however, extends beyond the problematic of science.
+
+The presented approach allows to bridge two important dimensions in any social field with a relatively high degree of autonomy: positions and position-takings.
+Such integration could be highly beneficial to investigations in other creatives areas such as literature or cinema, where genres [@Bourdieu1996;@Bryson1996; @Lizardo2018] operate homologously to disciplines in content classification.
+Reconciliation of the duality of the spaces of positions and position-takings offers an alternative way of linking cultural and social elements [@Edelmann2018; @Godart2018], and follows the trend in social sciences to conjugate interpretative and systematic analysis of textual data [@Lamont2014].
+We envision applications of the proposed mapping technique in more distant fields such as politics or economics, where the arrangement of positions and position-takings plays a crucial role.
+By accounting for the actual "takes" of position-takers, our methodology fills a gap in the operationalization of Bourdieu's theoretical edifice.
+We anticipate that scholars specialized in different areas of cultural production seize this opportunity and embark to systematically study the role of position-takings in the constitution, transformation, and reproduction of fields.
+
+# References
+
+::: {#refs}
+:::
+
+\newpage
+\beginsupplement
+
+# Supplementary information {-}
+
+## Data coverage in _R&D Information System_
+
+@tbl-riv_coverage provides an overview of the distribution of publication records in _R&D Information System_ as collected in 2022. Missing values are for records that could not be reliably matched to metadata with our inferred identifiers for duplicate records. The proportion of records included in the topic model reflects the improving quality of underlying data in _R&D Information System_ over time.
+
+```{r}
+#| label: tbl-riv_coverage
+#| tbl-cap: Number of publications by year in _R&D Information System_
+#| echo: false
+
+topmodel_docs <- arrow::read_feather(targets::tar_read("document_topic_matrix", store = here::here("_targets"))) |> transmute(id_unique = as.integer(doc))
+targets::tar_load("isvavai_data", store = here::here("_targets"))
+
+pubs_years_topmodel <- topmodel_docs |> 
+mutate(id_unique = as.integer(id_unique)) |> 
+left_join(arrow::read_feather(isvavai_data$riv_details$path)) |> 
+count(year, name = "Topic model") 
+
+pubs_years_all <- arrow::read_feather(isvavai_data$riv_details$path) |> select(id_unique, year) |> 
+bind_rows(topmodel_docs)  |> 
+filter(!duplicated(id_unique)) |> 
+count(year, name = "All")
+
+riv_coverage <- left_join(pubs_years_all, pubs_years_topmodel) |> 
+mutate(year = as.character(year)) |> 
+rename(Year = year) |> 
+tidyr::replace_na(list(Year = "missing")) |> 
+arrange(Year)
+
+gt::gt(riv_coverage) |> 
+gt::tab_spanner(label = "Dataset", columns = -1) |> 
+  gt::grand_summary_rows(
+    columns = c(2, 3),
+    fns = list(label = "Total", fn = "sum")
+  )  |> 
+  gt::tab_style(
+    style = gt::cell_text(size = 14),
+    locations = gt::cells_body(columns = gt::everything())
+  )  |> 
+    gt::tab_style(
+    style = gt::cell_text(size = 16),
+    locations = list(
+      gt::cells_column_labels(),
+      gt::cells_column_spanners(),
+      gt::cells_grand_summary(),
+      gt::cells_stub_grand_summary()
+      )
+  ) 
+```
+
+\newpage
+## Automated gender detection {#sec-supp_gender}
+
+```{r}
+#| echo: false
+
+train <- arrow::read_feather(targets::tar_read("isvavai_data", store = here::here("_targets"))$riv_authors$path)
+test <- readr::read_csv(here::here("data", "supplementary_data", "gender_manual.csv"))  |> 
+mutate(vedidk = as.character(vedidk))
+
+data_check <- test |> 
+    dplyr::left_join(train) |> 
+    select(vedidk, starts_with("gender")) |> 
+    tidyr::replace_na(list(gender_manual = "missing", gender = "missing")) 
+
+# Sample data: actual and predicted labels
+actual <- data_check$gender_manual
+predicted <- data_check$gender
+test_mat <- table(actual, predicted)
+# Calculate metrics
+true_positive <- test_mat[2, 2]
+true_negative <- test_mat[1, 1]
+false_positive <- sum(test_mat[2, 1], test_mat[2, 3])
+false_negative <- sum(test_mat[1, 2], test_mat[1, 3])
+
+accuracy <- round((true_positive + true_negative) / sum(test_mat), 2)*100
+precision <- round(true_positive / (true_positive + false_positive), 2)*100
+recall <- round(true_positive / (true_positive + false_negative), 2)*100
+
+# Repeat with unique names only
+data_check2 <- test |> 
+    dplyr::left_join(train) |> 
+    select(vedidk, name_first, starts_with("gender")) |> 
+    tidyr::replace_na(list(gender_manual = "missing", gender = "missing"))  |> 
+    arrange(gender) |> 
+    filter(!duplicated(name_first))
+
+# Sample data: actual and predicted labels
+actual2 <- data_check2$gender_manual
+predicted2 <- data_check2$gender
+test_mat2 <- table(actual2, predicted2)
+# Calculate metrics
+true_positive2 <- test_mat2[2, 2]
+true_negative2 <- test_mat2[1, 1]
+false_positive2 <- sum(test_mat2[2, 1], test_mat2[2, 3])
+false_negative2 <- sum(test_mat2[1, 2], test_mat2[1, 3])
+
+accuracy2 <- round((true_positive2 + true_negative2) / sum(test_mat2), 2)*100
+precision2 <- round(true_positive2 / (true_positive2 + false_positive2), 2)*100
+recall2 <- round(true_positive2 / (true_positive2 + false_negative2), 2)*100
+```
+
+We examined the quality of our automated gender detection from the Genderize.io service by manually labeling a random sample of `r nrow(data_check)` unique individuals, according to the _R&D Information System_'s identifiers, with `r length(unique(test$name_first))` unique first name strings. This design allows us to estimate the accuracy of gender labels assigned to the population of interest, specifically, the researchers affiliated with Czech institutions.
+The annotator assigned a manual label of perceived binary gender either based on prior knowledge or after a simple internet search in case of unfamiliar names. 
+@tbl-gender_eval gives the resulting confusion matrix with missing values added.
+A conservative estimate of accuracy, which includes the missing values as misclassifications, is `r accuracy`% (precision: `r precision`%; recall: `r recall`%), with label "male" as reference. 
+If we restrict the evaluation to unique names only ($N$=`r length(unique(test$name_first))`), accuracy remains high at `r accuracy2`% (precision: `r precision2`%; recall: `r recall2`%).
+
+```{r}
+#| label: tbl-gender_eval
+#| tbl-cap: Agreement between manual and automated gender detection
+#| echo: false
+
+gt::gt(as.data.frame.matrix(test_mat), rownames_to_stub = TRUE) |> 
+gt::tab_stubhead(label = "Manual") |> 
+gt::tab_spanner(label = "Automated", columns = -1) |> 
+gt::tab_source_note(
+  gt::md(paste0("_Random sample of individuals; N=", sum(test_mat), "._"))
+  ) |> 
+gt::tab_footnote(
+  gt::md("_Automated labels obtained from Genderize.io service._"),
+  locations = gt::cells_column_spanners()) 
+```
+
+For non-missing data, we note a perfect 100% agreement between automated and manual labels.
+Given the potential for doubt in these results, we provide anecdotal evidence of Genderize.io's failure to correctly assign a gender label to a first name in our dataset.
+The Czech name "Jindra" is a less common female first name. 
+The more prevalent male variant is "Jindřich", which is colloquially shortened to "Jindra" even for males.
+Genderize.io, similar to many automated gender detection systems, relies on social media data where users often present themselves informally. Consequently, we noticed that Genderize.io incorrectly identifies the name "Jindra" as a male name, albeit with lower probability.
+We are therefore far from claiming actual perfection for our gender-enriched dataset.
+Nevertheless, the evaluation instills confidence that aggregate trends identified for gender in our analyses remain consistent, even if gender detection methods were to improve.
+
+There are undisputable challenges associated with automated name-based gender detection. 
+This method relies on a simplistic, binary understanding of gender, mainly reflecting societal perceptions rather than individuals' self-identification. 
+In many cultures, first names lack definitive gender associations, and some names may be uncommon or unconventional. 
+However, in Slavic cultures and languages, where grammatical gender closely aligns with biological sex, both first and last names typically carry clear gender markers. 
+Moreover, Czech legislation explicitly differentiates between male and female names, prohibiting the assignment of male names to individuals perceived as biologically female and vice versa. 
+Considering that the majority of researchers in Czech institutions are of Czech descent, and given the linguistic and legal frameworks, as well as the prevalence of common names over rare ones, the nearly flawless correspondence between automated and manual gender labeling in our dataset no longer appears very surprising.
+
+
+\newpage
+## Clustering robustness checks {#sec-supp_cluster}
+
+To assess the validity of our clustering into three classes, we performed measurements both on silhouette scores and Dunn's index. 
+Both tests confirm that the partition is the best one of those available.
+In the case of the silhouette scores (@fig-SI_sil), the 3-classes solution returns the highest score (.31). 
+Regarding the Dunn's index (@fig-SI_dunn), certain clustering solutions have higher scores, yet none fall within a small number of partitions.
+Because the index for 3-classes solution outperforms those between 2 and 7 classes, it is deemed optimal among parsimonious solutions.
+
+```{r}
+targets::tar_load(
+  c("conversion_table", 
+  "disc_clust_hc",
+  "disc_top_profiles_clr",
+  "pca_disc"
+  ), store = here::here("_targets"))
+
+rownames(disc_top_profiles_clr) <- abbrev_discs(rownames(disc_top_profiles_clr))
+
+dist_m <- dist(disc_top_profiles_clr)
+
+for_silhouette <- silhouette(
+  x = cutree(disc_clust_hc,3),
+  dist_m
+)
+
+squared_dist <- dist_m * dist_m
+
+sil <- tidytable::new_tidytable()
+
+for (i in 2:10) {
+  temp_sil <- silhouette(x = cutree(disc_clust_hc, k = i),
+  squared_dist) |> as_tidytable() |> 
+    mutate(n_clust = i,
+    n_clust = ifelse(stringr::str_length(n_clust) == 1, 
+  paste0("0", n_clust),
+as.character(n_clust)))
+
+sil <- sil |> 
+  bind_rows(temp_sil)
+
+}
+```
+
+```{r}
+#| label: fig-SI_sil
+#| fig-cap: __Silhouette scores.__ Silhouette widths for clustering solutions in the range of 2 to 9 classes.
+#| echo: false
+#| out-width: 15cm
+#| fig.env: figure*
+ggplot(sil |> 
+  arrange(n_clust, cluster, -sil_width) |> 
+  group_by(n_clust) |> 
+  mutate(av_sil = paste0("k = ", n_clust, "; sil = ",
+                         round(mean(sil_width), 2)),
+         x = row_number()),
+ aes(x = x,
+  y = sil_width,
+  fill = factor(cluster)
+  )) +
+  geom_col() +
+  facet_wrap(~av_sil, scales = "free_x") +
+  labs(y = "Silhouette width") +
+  theme_bw()+
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank()
+    )
+```
+
+
+```{r}
+#| label: fig-SI_dunn
+#| fig-cap: __Dunn's Index.__ Dunn's Index scores for clustering solutions in the range of 2 to 9 classes.
+#| echo: false
+#| out-width: 15cm
+#| fig.env: figure*
+
+the_dunn <- tidytable::new_tidytable()
+for (i in 2:20) {
+  cluster <- cutree(disc_clust_hc,i)
+  temp_dunn <- clValid::dunn(squared_dist, cluster) |> 
+    enframe() |> 
+    mutate(name = i)
+  
+the_dunn <- the_dunn |> 
+  bind_rows(temp_dunn)
+
+}
+
+the_dunn <- the_dunn |> 
+  select(n_clust = 1, dunn_score = 2) 
+
+ggplot(the_dunn |>
+  filter(n_clust <= 9) |>
+  mutate(n_clust = as.factor(n_clust)) |> 
+  mutate(col = ifelse(n_clust == 3, TRUE, FALSE)), aes(x = n_clust, y = dunn_score, fill = col))+
+  geom_col()+
+  theme_bw()+
+  theme(legend.position = "none") +
+  labs(
+    x = "Number of clusters",
+    y = "Dunn's Index",
+  )
+```
+
+\newpage
+## Extended PCA analytics {#sec-supp_pca}
+
+The main text focuses on the analysis and interpretation of the three main principal components identified by PCA in the structured knowledge space of science. 
+Examination of the eigenvalues in the scree plot in @fig-scree identifies the "elbow" point, where the eigenvalues start to level off, at the 6th principal component. 
+Here, we briefly sketch out the analysis of the additional 3 components that the scree plot suggests to include in the interpretation.
+More details on the PCA solution are available in @tbl-pca_eval.
+
+
+```{r}
+#| label: fig-scree
+#| fig-cap: __PCA scree plot.__ Eigenvalues for each principal component are displayed.
+#| echo: false
+#| out-width: 15cm
+#| fig.env: figure*
+
+targets::tar_load("pca_disc", store = here::here("_targets"))
+targets::tar_load("pca_disc_ind", store = here::here("_targets"))
+
+eigs <- pca_disc$sdev^2
+scree_data <- tidytable::tidytable(
+    pc = seq_along(pca_disc$sdev),
+    sd = pca_disc$sdev,
+    eigs = eigs,
+    proportion = eigs / sum(eigs),
+    cumulative = cumsum(eigs) / sum(eigs)
+  )
+
+# cf. PCAtools::findElbowPoint(scree_data$eigs)
+scree_data |> 
+ggplot(aes(pc, eigs)) +
+geom_point(size = 2) +
+geom_line() +
+theme_bw() +
+labs(
+  x = "Principal component",
+  y = "Eigenvalue"
+  )
+
+```
+
+\newpage
+
+```{r}
+#| label: tbl-pca_eval
+#| tbl-cap: PCA statistics for first 10 principal components
+#| echo: false
+scree_data |> 
+arrange(pc) |> 
+slice_head(n = 10) |> 
+mutate(across(everything(), \(x)(round(x,2)))) |> 
+gt::gt()  |> 
+gt::cols_label(
+  pc = "Principal component",
+  sd = "Standard deviation",
+  eigs = "Eigenvalue",
+  proportion = "Proportion",
+  cumulative = "Cumulative"
+)
+```
+
+\newpage
+### Axis 4: Synthesis--Analysis
+
+On the axis 4 (@fig-pc4_ind, @fig-pc4_var), we find, on the negative pole, topics evoking environment, fields, and ecosystems.
+The positive pole is more challenging to interpret, as it assembles terms that that do not have an immediate semantic connection.
+However, it seems that the key to interpreting this pole lies precisely in accepting the variety of terminology at face value and viewing it as a collection of parts and functions from various fields.
+From this perspective, an interpretation emerges as a juxtaposition of holistic, systematic, ecological approaches with anatomy and the breakdown of systems into constituent parts.
+To express this difference abstractly, we name the poles Synthesis and Analysis.
+This interpretation is well supported by the distribution of disciplines.
+In the natural sciences, we observe a progression from ecology and organisms, through chemistry, to mechanics and physics.
+A paralel gradient in the human sciences moves from economic and political contexts towards cultural artifacts and language, down to the physiological and neurological components of human speech.
+On this axis, we find a more general expression of well-known epistemological distinctions, such as field versus laboratory in natural sciences, or base versus superstructure and structuralism versus interactionism in social sciences.
+
+```{r}
+pc4viz <- viz_disc_top(pca_disc, pca_disc_ind, "PC1", 1, "PC4", 4, scree_data)
+pc4_topics <- defining_topics(pca_disc_ind, "PC4", n = 10)
+pc4_text_min <- paste(paste0(seq_along(pc4_topics$min), ") ", pc4_topics$min), collapse = ", ")
+pc4_text_max <- paste(paste0(seq_along(pc4_topics$max), ") ", pc4_topics$max), collapse = ", ")
+```
+
+Prominent terms in 20 highest-ranked topics on principal component 4:
+
+- __Negative pole__: _`r pc4_text_min`_.
+- __Positive pole__: _`r pc4_text_max`_.
+
+```{r}
+#| label: fig-pc4_ind
+#| fig-cap: "__Cloud of topics in the knowledge space__. Scores of topics on principal components 1 (Culture--Nature) and 4 (Synthesis--Analysis). _N_ = 3656."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+pc4viz$topics
+```
+
+```{r}
+#| label: fig-pc4_var
+#| fig-cap: "__Cloud of disciplines in the knowledge space__. Contributions of disciplines on principal components 1 (Culture--Nature) and 4 (Synthesis--Analysis). _N_ = 42."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+pc4viz$discipline 
+```
+
+\newpage
+### Axis 5: Applied--Fundamental
+
+Axis 5 (@fig-pc5_ind, @fig-pc5_var) straightforwardly represents a continuum between applied and fundamental research.
+The negatively positioned topics stem from various domains but consistently align with the realm of application and problem-driven research:_expenditures_, _risk\_management_, _simulator_, _traffic\_accident_, _nudging_, etc.
+Conversely, topics with the highest positive loadings exhibit a lack of semantic coherence, instead focusing on general aspects of scholarly communication, including abbreviations, numbers, hedging adverbs (_broadly_, _probably_, _supposedly_), and ubiquitous words and phrases (_study_, _find_, _collect_, _discoveries_).
+In contrast to the application-oriented pole, these topics signify the scientific process itself as it is embodied in the communication of fundamental, curiosity-driven research.
+The layout of disciplines also closely corresponds with the proposed interpretation.
+The 5th axis clearly differentiates biotechnological disciplines from physical, biological, and chemical sciences, as well as interdisciplinary social sciences from philosophy and literature.
+
+```{r}
+pc5viz <- viz_disc_top(pca_disc, pca_disc_ind, "PC1", 1, "PC5", 5, scree_data)
+pc5_topics <- defining_topics(pca_disc_ind, "PC5", n = 10)
+pc5_text_min <- paste(paste0(seq_along(pc5_topics$min), ") ", pc5_topics$min), collapse = ", ")
+pc5_text_max <- paste(paste0(seq_along(pc5_topics$max), ") ", pc5_topics$max), collapse = ", ")
+```
+
+Prominent terms in 20 highest-ranked topics on principal component 5:
+
+- __Negative pole__: _`r pc5_text_min`_.
+- __Positive pole__: _`r pc5_text_max`_.
+
+```{r}
+#| label: fig-pc5_ind
+#| fig-cap: "__Cloud of topics in the knowledge space__. Scores of topics on principal components 1 (Culture--Nature) and 5 (Applied--Fundamental). _N_ = 3656."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+pc5viz$topics
+```
+
+```{r}
+#| label: fig-pc5_var
+#| fig-cap: "__Cloud of disciplines in the knowledge space__. Contributions of disciplines on principal components 1 (Culture--Nature) and 5 (Applied--Fundamental). _N_ = 42."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+pc5viz$discipline 
+```
+
+\newpage
+### Axis 6: Description/Observation--Prescription/Experiment
+
+The negative pole of axis 6 (@fig-pc6_ind, @fig-pc6_var) is characterized by terms associated with experimental protocols in chemistry, while several main topics at the positive pole revolve around geographic mapping.
+Expanding the interpretative breadth to encompass additional topics at each extreme reveals, on the negative end, a plethora of verbs and nouns denoting actions (e.g., among cultural topics: _promote_, _process_, _social\_work_, _examine_), whereas beyond geographic mapping, we encounter extensive terminology related to recording (_database_) and measurements (_doppler_, _calibration_).
+The disciplines that organize knowledge along this axis predominantly include earth sciences, agriculture, and medical engineering (focused on mapping and measurement devices), as well as history and art (emphasizing description and classification) on one end, and chemical sciences (focus on experimentation) or law (concerned with the regulation of human behavior) on the other.
+It is notable that physical sciences, where the emphasis is equally split between experimental design and measurement of outcomes with intricate instruments, are situated in the middle of axis 6. 
+A succinct encapsulation of these distinctions can be articulated as a dichotomy between description and intervention, or between measurement and manipulation. 
+Nevertheless, given that this axis appears to align well with more widely recognized epistemological dichotomies, we might perhaps content ourselves, at least provisionally, with less universal yet readily comprehensible labels: description/observation versus prescription/experiment.
+
+```{r}
+pc6viz <- viz_disc_top(pca_disc, pca_disc_ind, "PC1", 1, "PC6", 6, scree_data)
+pc6_topics <- defining_topics(pca_disc_ind, "PC6", n = 10)
+pc6_text_min <- paste(paste0(seq_along(pc6_topics$min), ") ", pc6_topics$min), collapse = ", ")
+pc6_text_max <- paste(paste0(seq_along(pc6_topics$max), ") ", pc6_topics$max), collapse = ", ")
+```
+
+Prominent terms in 20 highest-ranked topics on principal component 6:
+
+- __Negative pole__: _`r pc6_text_min`_.
+- __Positive pole__: _`r pc6_text_max`_.
+
+```{r}
+#| label: fig-pc6_ind
+#| fig-cap: "__Cloud of topics in the knowledge space__. Scores of topics on principal components 1 (Culture--Nature) and 6 (Description/Observation--Prescription/Experiment). _N_ = 3656."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+pc6viz$topics
+```
+
+```{r}
+#| label: fig-pc6_var
+#| fig-cap: "__Cloud of disciplines in the knowledge space__. Contributions of disciplines on principal components 1 and 6. _N_ = 42."
+#| echo: false
+#| out-width: 15cm 
+#| fig.env: figure*
+pc6viz$discipline 
+```
+
+\newpage
+## Epistemological position-takings by principal investigators and non-funded researchers
+
+Similarly to @fig-gender_disc_direction, here we show the average disciplinary topic portofolios of principal investigators (PIs) and other non-funded researchers projected onto the main axes of the knowledge space, i.e., Culture-Nature and Life-Non-life.
+Contrary to the case of gender topic portfolios, the two groups distinguished by their PI status do not exhibit stark epistemological differences.
+As shown in @fig-pi_disc_direction, the topic orientations of PIs and non-Pis are often calibrated similarly.
+Orientation towards mathematics is partially indicative of PIs in life sciences and some social sciences.
+On the other hand, in applied and enginnering disciplines, PIs tend to distance themselves relatively further from math than non-PIs.
+In the latter case, we may speculate that in these disciplines math is associated with theory, which may be disadvantaged especially in funding programs for applied research.
+Many non-PIs are also likely to work on funded projects and co-author publications with the PIs, resulting in similar topic portfolios.
+Repeating the excercise with other axes would allow us to detect the importance of other epistemological distinctions.
+
+```{r}
+#| label: fig-pi_disc_direction
+#| echo: false
+#| out-width: 15cm
+#| fig-cap: "__PI status differences in disciplinary topic portfolios__. Shapes represent the average topic portfolio for funded (principal investigators) and unfunded researchers, projected onto Principal Components 1 and 2 for each discipline. Lines illustrate the distances and spatial orientations between the portfolios. Individual authors with profiles that comprise of 5 or more publications are displayed as a background reference (N = 58466). Broad classifications are denoted by colors, and the second level of FORD classification is indicated by labels."
+#| fig.env: figure*
+
+pi_disc_direction_png <- basename(targets::tar_read("pi_disc_direction_png", store = here::here("_targets")))
+knitr::include_graphics(path =file.path("figures", pi_disc_direction_png))
+```

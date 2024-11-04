@@ -1,0 +1,12 @@
+---
+title: "Authors' biographies"
+format: docx
+---
+
+__Radim Hladík__
+
+Radim Hladík is a researcher at the Institute of Philosophy of the Czech Academy of Sciences (IP CAS) in Prague. His scholarly background spans quantitative studies of science, text analytics, digital humanities, media studies, and scholarly communication. He conducts research at the intersection of cultural classifications and social stratification. He also serves the academic community through Open Science initiatives, editorial responsibilities for the Theory of Science journal and leadership of the Czech Association for Digital Humanities.
+
+__Yann Renisio__
+
+Yann Renisio is Associate scientist at CNRS. He was previously postdoc at Sciences-Po, Uppsala University and Collège de France. He holds a PhD in Sociology from EHESS (2017). He is also an affiliated researcher at the department of sociology of education and culture of Uppsala University. He is interested in social stratification, aspirations, and methodology in social science. His current work focuses on Higher Education, professional specialization in medicine, gaps between practice and declaration, and kinship networks.

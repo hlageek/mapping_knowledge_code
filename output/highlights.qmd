@@ -1,0 +1,13 @@
+---
+title: "Highlights"
+format:
+  docx: default
+---
+
+- Scientific disciplines can be decomposed into latent topics
+- Compositional approach to topic modeling enables geometric analysis
+- Science is split by Culture--Nature, Life--Non-life, and Materials--Methods dichotomies
+- Topic portfolios of researchers can be mapped relationally in knowledge space
+- Epistemological position-takings reveal social patterns among knowledge producers
+
+

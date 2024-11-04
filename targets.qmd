@@ -1,0 +1,428 @@
+---
+title: "Mapping knowledge - pipeline"
+format:
+  html:
+    code-fold: true
+---
+
+# Setup
+
+
+## Targets script setup
+```{r}
+#| label: setup
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(targets)
+library(tarchetypes)
+library(here)
+library(conflicted)
+tar_unscript("_targets.R")
+```
+
+## Functions and packages
+```{r}
+#| engine: targets
+#| label: globals
+#| tar_globals: true
+
+# read custom functions
+lapply(list.files(here::here("R"), full.names = TRUE), source)
+
+# index data files
+isvavai_data_index <- list.files(here::here("data", "input_data", "isvavai_data"), full.names = TRUE)
+topic_model_index <- list.files(here::here("data", "input_data", "topic_model"), full.names = TRUE)
+
+# register packages
+targets::tar_option_set(
+  packages = c(
+    "arrow",
+    "dplyr",
+    "factoextra",
+    "ggdendro",
+    "ggplot2",
+    "gt",
+    "here",
+    "patchwork",
+    "purrr",
+    "quarto",
+    "stringr",
+    "targets",
+    "tarchetypes",
+    "tibble",
+    "tidyr",
+    "tidytable"
+  ),
+  garbage_collection = TRUE,
+  memory = "transient"
+  )
+conflicted::conflict_prefer_all("tidytable", quiet = TRUE)
+```
+
+# Data preparation
+
+We first load metadata for topic models as established in `data_raw` subproject. Next, we specify a path for a chosen model (the most granular one) and convert it to a matrix. We use the matrix to find stop topics. Finally, we remove the stop topics from the original matrix and close the topic distributions again.
+
+```{r}
+#| engine: targets
+#| label: topic_model
+list(
+    tar_target(
+      name = isvavai_data_files,
+      command = isvavai_data_index,
+      format = "file"
+    ),
+    tar_target(
+      name = topic_model_files,
+      command = topic_model_index,
+      format = "file"
+    ),
+tar_target(
+    name = isvavai_data,
+    command = parse_data_files(isvavai_data_files)
+    ),
+tar_target(
+    name = topic_matrix,
+    command = stringr::str_subset(topic_model_files, "topics_level_1"),
+    format = "file"
+    ),
+tar_target(
+    name = document_topic_matrix,
+    command = stringr::str_subset(topic_model_files, "documents_level_1"),
+    format = "file"
+    )
+)
+```
+
+## Topic profiles by authors
+
+To construct per author-publication pair topic profiles, we first turn the topic matrix into a list column of numeric vectors and then bind those profiles to author-publication pairs by the publication id. Only those author-publication pairs that have an available topic representations are retained. Then we take the normalized sum of the probabilities (which is equal to the column means) for each author.
+
+```{r}
+#| engine: targets
+#| label: topic_profiles
+list(
+  tar_target(
+    name = people_top_profiles,
+    command = make_people_top_profiles(
+      document_topic_matrix,
+      isvavai_data
+      ),
+    format = "feather"
+  )
+)
+```
+
+## Topic profiles by disciplines
+
+To construct per author-publication pair topic profiles, we first turn the topic matrix into a list column of numeric vectors and then bind those profiles to author-publication pairs by the publication id. Only those author-publication pairs that have an available topic representations are retained. Then we take the normalized sum of the probabilities (which is equal to the column means) for each author.
+
+```{r}
+#| engine: targets
+#| label: topic_profiles_disc
+list(
+  tar_target(
+    name = disc_top_profiles,
+    command = make_disc_top_profiles(
+      document_topic_matrix,
+      isvavai_data
+      )
+  ),
+  tar_target(
+    name = disc_top_profiles_clr,
+    command = run_clr_transform(disc_top_profiles)
+  )
+)
+```
+
+
+# Analysis
+
+
+## Clustering of disciplines
+
+```{r}
+#| engine: targets
+#| label: disc_clust
+list(
+tar_target(
+    name = disc_clust_hc,
+    command = run_disc_clustering(disc_top_profiles_clr)
+  ),
+tar_target(
+    name = conversion_table,
+    command = convert_ford(isvavai_data)
+  ),
+tar_target(
+    name = disc_clust_viz,
+    command = viz_disc_clustering(disc_clust_hc, conversion_table)
+  )
+)
+```
+
+## PCA
+
+
+```{r}
+#| engine: targets
+#| label: pca
+list(
+  tar_target(
+    name = pca_disc,
+    command = run_pca(disc_top_profiles_clr)
+  ),
+  tar_target(
+    name = topic_names,
+    command = name_topics(topic_matrix),
+    format = "feather"
+  ),
+  tar_target(
+    name = pca_disc_ind,
+    command = calc_pca_coords(pca_disc, topic_names),
+    format = "feather"
+  ),
+  tar_target(
+    name = pca_disc_ind_viz,
+    command = viz_pca_disc_ind(pca_disc, pca_disc_ind)
+  ),
+  tar_target(
+    name = people_data,
+    command = inner_join(arrow::read_feather(
+      isvavai_data$riv_authors$path
+    ), people_top_profiles),
+    format = "feather"
+  )
+)
+```
+
+
+### PCA projection
+
+
+```{r}
+#| engine: targets
+#| label: pca_project
+list(
+  tar_target(
+    name = pca_projection,
+    command = project_pca(pca_disc_ind, people_data, keep = 10)
+  ),
+tar_target(
+    name = pca_projection_field_viz_1_2,
+    command = viz_pca_projection_field_1_2(pca_projection, 
+                                                          axis_1 = "PC1", axis_2 = "PC2", label_top = "Non-life", label_bottom = "Life",
+                                                          label_left = "Culture",
+                                                          label_right = "Nature",
+                                                          min_pubs = 5
+                                                          )
+  ),
+  tar_target(
+    name = pca_projection_field_viz_2_3,
+    command = viz_pca_projection_field_2_3(pca_projection,
+                                                          axis_1 = "PC2",
+                                                          axis_2 = "PC3",
+                                                          label_top = "Methods", label_bottom = "Materials",
+                                                          label_left = "Life",
+                                                          label_right = "Non-life",
+                                                          min_pubs = 5
+                                                          )
+  ),
+  tar_target(
+    name = pca_gender_disc_projection,
+    command = project_gender_disc(people_data, pca_disc_ind, pca_projection, conversion_table, isvavai_data)
+  ),
+  tar_target(
+    name = pca_pi_disc_projection,
+    command = project_pi_disc(people_data, pca_disc_ind, pca_projection, conversion_table, isvavai_data)
+  )
+)
+```
+
+
+### PCA validation
+
+```{r}
+#| engine: targets
+#| label: pca_validate
+list(
+tar_target(
+    name = pca_articles_viz,
+    command = viz_articles_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_gender_viz,
+    command = viz_gender_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_pi_viz,
+    command = viz_pi_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_cas_viz,
+    command = viz_cas_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_hospital_viz,
+    command = viz_hospital_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_art_viz,
+    command = viz_art_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_coauthors_viz,
+    command = viz_coauthors_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_applied_viz,
+    command = viz_applied_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = pca_gov_viz,
+    command = viz_gov_pct(pca_projection, isvavai_data)
+  ),
+tar_target(
+    name = validation_viz,
+    command = viz_validation(
+      pca_articles_viz,
+      pca_gender_viz,
+      pca_pi_viz,
+      pca_cas_viz,
+      pca_hospital_viz,
+      pca_art_viz,
+      pca_coauthors_viz,
+      pca_applied_viz,
+      pca_gov_viz
+      )
+  )
+)
+```
+
+
+# Publication
+
+## Figures
+
+```{r}
+#| engine: targets
+#| label: figures
+#| eval: true
+list(
+  tar_target(
+    name = validation_viz_png,
+    command = export_figures(validation_viz,  here::here("output", "figures"), height = 29, width = 29),
+    format = "file"
+  ),
+  tar_target(
+    name = disc_clust_viz_png,
+    command = export_figures(disc_clust_viz, here::here("output", "figures")),
+    format = "file"
+  ),
+  tar_target(
+    name = pca_disc_ind_viz_png,
+    command = purrr::map2_chr(pca_disc_ind_viz, names(pca_disc_ind_viz),~export_figures(.x, here::here("output", "figures"), .y)),
+    format = "file"
+  ),
+  tar_target(
+    name = plot_PC1_PC2_png,
+    command = export_figures(pca_projection_field_viz_1_2,
+       here::here("output", "figures"),
+      filename = "plot_PC1_PC2"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    name = plot_PC2_PC3_png,
+    command = export_figures(pca_projection_field_viz_2_3,
+       here::here("output", "figures"),
+      filename = "plot_PC2_PC3"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    name = gender_disc_direction_png,
+    command = export_figures(pca_gender_disc_projection,
+       here::here("output", "figures"),
+      filename = "gender_disc_direction"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    name = pi_disc_direction_png,
+    command = export_figures(pca_pi_disc_projection,
+       here::here("output", "figures"),
+      filename = "pi_disc_direction"
+    ),
+    format = "file"
+  )  
+  
+)
+``` 
+
+## Tables
+
+```{r}
+#| engine: targets
+#| label: tables
+list(
+  tar_target(
+    name = topic_stats_table,
+    command = describe_topic_stats(topic_model_files)
+  ),
+  tar_target(
+    name = axes_coordinates_table,
+    command = interpret_coordinates_tbl(pca_disc_ind, n_top = 10)
+  )
+)
+```
+
+## Stats
+
+```{r}
+#| engine: targets
+#| label: stats
+#| eval: true
+list(
+tar_target(
+    name = stats,
+    command = calc_stats(
+          isvavai_data,
+          people_top_profiles,
+          pca_disc,
+          pca_disc_ind,
+          pca_projection,
+          document_topic_matrix,
+          axes_coordinates_table
+    )
+   )
+)
+``` 
+
+## Supplementary material
+
+```{r}
+#| engine: targets
+#| label: supp
+#| eval: true
+# list(
+# tar_target(
+#   name = supp_names,
+#   command = make_supp_names()
+#   )
+# )
+```
+
+
+## Paper
+
+```{r}
+#| engine: targets
+#| label: abstract
+#| eval: true
+list(
+tarchetypes::tar_quarto(
+    name = article,
+    path = here::here("output", "article.qmd"),
+    working_directory = here::here("output")
+    )
+  )
+``` 

@@ -1,0 +1,39 @@
+---
+title: Title page
+format: docx
+---
+
+__Mapping Knowledge: Topic Analysis of Science Locates Researchers in Disciplinary Landscape__
+
+Radim Hladík^1^  
+
+Yann Renisio^2^
+
+__Authors' affiliations__
+
+^1^ Center for Science, Technology, and Society Studies  
+Institute of Philosophy of the Czech Academy of Sciences  
+Jilská 1, 110 00 Praha 1, Czech Republic  
+hladik@flu.cas.cz
+  
+
+^2^  Centre for Research on social InequalitieS (CRIS)  
+CNRS/SciencesPo  
+1, Place St Thomas d'Aquin, 75007 Paris, France  
+yann.renisio@sciencespo.fr
+
+__Authors' contributions__
+
+__*Radim Hladík*__: Conceptualization; Data curation; Funding acquisition; Investigation; Methodology; Resources; Software; Visualization; Writing - original draft; Writing - review & editing. __*Yann Renisio*__: Conceptualization; Investigation; Methodology; Software; Visualization; Writing - review & editing.
+
+__Acknowledgements__
+
+The authors wish to express their sincere gratitude to the organizers and participants of the "Homology in Field Analysis" workshop series held in Copenhagen (2023) and Warsaw (2024), where earlier versions of the paper were presented and discussed. This work was conducted using computational resources, tools, and services provided by the e-INFRA CZ (ID:90254) and LINDAT/CLARIAH-CZ (LM2023062) research infrastructures supported by the Ministry of Education, Youth and Sports of the Czech Republic.
+
+__Funding__
+
+The research was supported by Czech Science Foundation grant no. GJ20-01752Y (Funded and Unfunded Research in the Czech Republic: Scientometric Analysis and Topic Modeling).
+
+__Declaration of generative AI in scientific writing__
+
+During the preparation of this work the authors used ChatGPT in order to to improve readability and language. After using this tool, the authors reviewed and edited the content as needed and takes full responsibility for the content of the publication.

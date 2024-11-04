@@ -1,0 +1,125 @@
+---
+title: "Supplementary information"
+format: pdf
+---
+
+# Clustering Robustness checks
+
+To assess the validity of our clustering into three classes, we performed measurements both on Silhouette scores and Dunn's index. 
+Both tests confirm that the partition is the best one of those available.
+In the case of the silhouette scores, the 3 classes solution returns the highest score (.31). 
+Regarding the Dunn's index, some solutions have higher scores, but none within a small number of partitions (the 3 class solution outperforms those between 2 and 7 classes).
+
+## Silhouette scores
+
+```{r echo=FALSE, message= FALSE}
+
+#install.packages("ggdendro")
+#install.packages("tidytable")
+#install.packages("ggtext")
+#install.packages("cluster")
+#install.packages("clValid")
+#install.packages("patchwork")
+library(cluster)
+library(clValid)
+
+conversion_tables <- read_rds("conversion_table.RDS")
+disc_clust_hc <- read_rds("disc_clust_hc.RDS")
+disc_top_profiles_clr <- read_rds("disc_top_profiles_clr.RDS")
+pca_disc <- read_rds("pca_disc.RDS")
+
+source("run_disc_clustering.R")
+source("viz_disc_clustering.R")
+source("abbrev_discs.R")
+
+disc_clust_hc <-  run_disc_clustering(disc_top_profiles_clr)
+
+#viz_disc_clustering(disc_clust_hc,conversion_tables)
+
+library(cluster)
+
+rownames(disc_top_profiles_clr) <- abbrev_discs(rownames(disc_top_profiles_clr))
+
+dist_m <- dist(disc_top_profiles_clr)
+
+for_silhouette <- silhouette(
+  x = cutree(disc_clust_hc,3),
+  dist_m
+)
+
+squared_dist <- dist_m * dist_m
+
+sil <- tibble()
+
+for (i in 2:10) {
+  temp_sil <- silhouette(x = cutree(disc_clust_hc, k = i),
+  squared_dist) |> as_tibble() |> 
+    mutate(n_clust = i,
+    n_clust = ifelse(str_length(n_clust) == 1, 
+  paste0("0", n_clust),
+as.character(n_clust)))
+
+sil <- sil |> 
+  bind_rows(temp_sil)
+
+}
+
+# 
+
+
+```
+
+
+```{r echo=FALSE}
+ggplot(sil |> 
+  arrange(n_clust, cluster, -sil_width) |> 
+  group_by(n_clust) |> 
+  mutate(av_sil = paste0("k = ", n_clust, "; sil = ",
+                         round(mean(sil_width), 2)),
+         x = row_number()),
+ aes(x = x,
+  y = sil_width,
+  fill = factor(cluster)
+  ))+
+  geom_col()+
+  facet_wrap(~av_sil, scales = "free_x")+
+  theme_bw()+
+  ggtitle("Silhouette score\n(2 to 9 classes solutions)")+
+  theme(legend.position = "none")
+```
+
+## Dunn's index
+
+```{r, echo= FALSE}
+
+the_dunn <- tibble()
+for (i in 2:20) {
+  cluster <- cutree(disc_clust_hc,i)
+  temp_dunn <- clValid::dunn(squared_dist, cluster) |> 
+    enframe() |> 
+    mutate(name = i)
+  
+the_dunn <- the_dunn |> 
+  bind_rows(temp_dunn)
+
+}
+
+the_dunn <- the_dunn |> 
+  rename(n_clust = 1, dunn_score = 2)
+
+```
+
+
+```{r, echo = FALSE}
+
+ggplot(the_dunn |>
+  filter(n_clust <= 10) |>
+  mutate(col = ifelse(n_clust == 3, TRUE, FALSE)), aes(x = n_clust, y = dunn_score, fill = col))+
+  geom_col()+
+  theme_bw()+
+  theme(legend.position = "none")+
+  ggtitle("Dunn's index\n(2 to 9 classes solutions)")
+
+
+```
+

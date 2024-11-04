@@ -1,0 +1,38 @@
+$if(has-frontmatter)$
+\frontmatter
+$endif$
+
+$if(title)$
+\makeatletter
+\maketitle
+
+{\Large\centering Radim Hladík\textsuperscript{1,*}, Yann Renisio\textsuperscript{2}\\}
+
+
+\begin{abstract}
+% Write your abstract here ----------------------------------------------------
+
+\textit{
+$abstract$
+}
+\\
+\textbf{\\Keywords:} \textit{$keywords$}
+
+
+% abstract completed  ----------------------------------------------------------
+\end{abstract}
+
+
+\textsuperscript{1} Czech Academy of Sciences, Centre for Science,
+Technology and Society Studies (CSTSS)\\
+\textsuperscript{2} CNRS/SciencesPo, Centre for Research on social
+InequalitieS (CRIS)
+
+\textsuperscript{*} Correspondence:
+\href{mailto:hladik@flu.cas.cz}{Radim Hladík
+\textless{}hladik@flu.cas.cz\textgreater{}}
+
+
+\newpage
+\makeatother
+$endif$
